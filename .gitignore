@@ -1,0 +1,33 @@
+# Dependencias
+node_modules/
+.npm
+
+# Builds
+dist/
+build/
+
+# Variables de entorno (NUNCA subir al repo)
+.env
+.env.local
+.env.production
+
+# PDFs generados localmente
+maxi-docs-backend/uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+*.swp
+*.swo
+
+# Temporales
+*.tmp
+*.temp

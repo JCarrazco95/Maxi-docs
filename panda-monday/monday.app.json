@@ -1,0 +1,24 @@
+{
+  "name": "Maxi-Docs",
+  "description": "Crea y gestiona documentos directamente desde tus boards de Monday.com",
+  "version": "0.1.0",
+  "features": [
+    {
+      "type": "BoardView",
+      "name": "Maxi-Docs - Vista",
+      "description": "Vista de documentos para el board",
+      "urlPath": "/"
+    },
+    {
+      "type": "ItemView",
+      "name": "Maxi-Docs - Item",
+      "description": "Panel de documentos del item seleccionado",
+      "urlPath": "/"
+    }
+  ],
+  "permissions": [
+    "boards:read",
+    "items:read",
+    "updates:write"
+  ]
+}
