@@ -52,6 +52,7 @@ const IconAlertCircle = () => (
 export default function SignatureModal({ document, itemId, onClose, onSent }) {
   const [signers, setSigners]   = useState([{ name: '', email: '' }])
   const [expireDays, setExpire] = useState('7')
+  const [senderNote, setNote]   = useState('')
   const [sending, setSending]   = useState(false)
   const [error, setError]       = useState(null)
 
@@ -81,6 +82,7 @@ export default function SignatureModal({ document, itemId, onClose, onSent }) {
         document_id:  document.id,
         signers:      validSigners,
         expire_days:  expireDays ? Number(expireDays) : null,
+        sender_note:  senderNote.trim() || null,
       })
 
       // Notificación en el item de Monday
@@ -182,6 +184,21 @@ export default function SignatureModal({ document, itemId, onClose, onSent }) {
             </button>
 
             <hr className="divider" style={{ margin: '16px 0 12px' }} />
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontSize: 12 }}>
+                Mensaje personalizado <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(opcional)</span>
+              </label>
+              <textarea
+                className="form-textarea"
+                value={senderNote}
+                onChange={e => setNote(e.target.value)}
+                placeholder="Ej: Adjunto la propuesta acordada. Por favor revísala y fírmala cuando puedas."
+                style={{ minHeight: 72, fontSize: 13, resize: 'vertical' }}
+                maxLength={500}
+              />
+              <div className="form-hint">Se incluye en el email de firma personalizado</div>
+            </div>
 
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ fontSize: 12 }}>

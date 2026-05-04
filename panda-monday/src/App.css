@@ -1773,6 +1773,21 @@ hr.divider {
 }
 .weekly-bar-label { font-size: 10px; color: var(--text-tertiary); white-space: nowrap; }
 
+/* ── Fase 5: WhatsApp button ───────────────────────────────── */
+.btn-whatsapp {
+  background: #25D366;
+  color: white !important;
+  border-color: #25D366;
+  text-decoration: none;
+}
+.btn-whatsapp:hover:not(:disabled) {
+  background: #1ebe5a;
+  border-color: #1ebe5a;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(37, 211, 102, 0.4);
+}
+.btn-whatsapp svg { fill: white; }
+
 .sig-info   { flex: 1; min-width: 0; }
 .sig-name   { font-size: 13px; font-weight: 600; color: var(--text); }
 .sig-email  { font-size: 12px; color: var(--text-secondary); }

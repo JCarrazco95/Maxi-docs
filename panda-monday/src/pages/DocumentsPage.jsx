@@ -360,6 +360,7 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
                     <td colSpan={isAdmin ? 6 : 5} style={{ padding: 0 }}>
                       <SignatureStatusPanel
                         documentId={doc.id}
+                        documentName={doc.name}
                         documentStatus={doc.status}
                       />
                     </td>
