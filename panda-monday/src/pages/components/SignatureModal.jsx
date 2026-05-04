@@ -47,9 +47,10 @@ const IconAlertCircle = () => (
 )
 
 export default function SignatureModal({ document, onClose, onSent }) {
-  const [signers, setSigners] = useState([{ name: '', email: '' }])
-  const [sending, setSending] = useState(false)
-  const [error, setError]     = useState(null)
+  const [signers, setSigners]   = useState([{ name: '', email: '' }])
+  const [expireDays, setExpire] = useState('7')
+  const [sending, setSending]   = useState(false)
+  const [error, setError]       = useState(null)
 
   function addSigner() {
     setSigners(prev => [...prev, { name: '', email: '' }])
@@ -74,8 +75,9 @@ export default function SignatureModal({ document, onClose, onSent }) {
     setError(null)
     try {
       await api.post('/api/signatures/send', {
-        document_id: document.id,
-        signers:     validSigners,
+        document_id:  document.id,
+        signers:      validSigners,
+        expire_days:  expireDays ? Number(expireDays) : null,
       })
       onSent(document)
     } catch (e) {
@@ -162,6 +164,26 @@ export default function SignatureModal({ document, onClose, onSent }) {
             >
               <IconPlus /> Agregar firmante
             </button>
+
+            <hr className="divider" style={{ margin: '16px 0 12px' }} />
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontSize: 12 }}>
+                Vigencia de la solicitud
+              </label>
+              <select
+                className="form-select"
+                value={expireDays}
+                onChange={e => setExpire(e.target.value)}
+                style={{ fontSize: 13 }}
+              >
+                <option value="3">3 días</option>
+                <option value="7">7 días (recomendado)</option>
+                <option value="15">15 días</option>
+                <option value="30">30 días</option>
+                <option value="">Sin expiración</option>
+              </select>
+            </div>
           </div>
 
           <div className="modal-footer">

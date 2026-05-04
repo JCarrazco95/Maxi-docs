@@ -43,7 +43,7 @@ function pdfToBase64(pdfUrl) {
  * Envía un documento a DocuSeal para firma electrónica.
  * Flujo: 1) crear plantilla desde PDF  2) crear envío con firmantes
  */
-export async function sendForSignature({ documentName, pdfUrl, signers }) {
+export async function sendForSignature({ documentName, pdfUrl, signers, expireDays = null }) {
   if (!API_KEY || API_KEY === 'tu_api_key') {
     const err = new Error('DocuSeal no está configurado. Agrega DOCUSEAL_API_KEY en el .env del backend.');
     err.status = 503;
@@ -66,9 +66,14 @@ export async function sendForSignature({ documentName, pdfUrl, signers }) {
   console.log(`[DocuSeal] Template creado: ID ${template.id}`);
 
   // 2. Crear el envío con todos los firmantes
+  const expireAt = expireDays
+    ? new Date(Date.now() + expireDays * 86_400_000).toISOString()
+    : undefined;
+
   const submission = await docusealPost('/submissions', {
     template_id: template.id,
     send_email:  true,
+    ...(expireAt ? { expire_at: expireAt } : {}),
     submitters: signers.map(s => ({
       role:  template.submitters?.[0]?.name ?? 'First Party',
       email: s.email,

@@ -1355,3 +1355,122 @@ hr.divider {
   pointer-events: none;
   font-style: italic;
 }
+
+/* ── Fase 2: Signatures Panel ──────────────────────────────── */
+
+/* Botón "Ver firmas" inline en el nombre del doc */
+.sig-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  margin-left: 8px;
+  font-weight: 500;
+  transition: background var(--transition);
+}
+.sig-expand-btn:hover { background: var(--primary-light); }
+
+/* Fila expandida */
+.row-expanded td { background: var(--bg); }
+.row-panel td    { padding: 0 !important; border-bottom: 2px solid var(--primary-light); }
+
+/* Panel de firmas */
+.sig-panel {
+  padding: 14px 20px 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--border-light);
+}
+
+.sig-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.sig-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.sig-panel-title svg { color: var(--text-secondary); }
+
+.sig-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+.sig-summary.signed  { background: var(--success-light); color: var(--success); }
+.sig-summary.pending { background: var(--primary-light);  color: var(--primary); }
+
+.sig-panel-loading,
+.sig-panel-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+
+/* Lista de firmantes */
+.sig-list { display: flex; flex-direction: column; gap: 8px; }
+
+.sig-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  transition: border-color var(--transition);
+}
+.sig-row-signed   { border-left: 3px solid var(--success); }
+.sig-row-pending  { border-left: 3px solid var(--primary); }
+.sig-row-rejected { border-left: 3px solid var(--danger);  }
+
+.sig-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sig-info   { flex: 1; min-width: 0; }
+.sig-name   { font-size: 13px; font-weight: 600; color: var(--text); }
+.sig-email  { font-size: 12px; color: var(--text-secondary); }
+.sig-date   { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+
+.sig-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sig-check-icon {
+  display: flex;
+  align-items: center;
+  color: var(--success);
+}
