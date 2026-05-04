@@ -6,6 +6,50 @@ import { uploadPdf, buildPdfKey } from '../services/storageService.js';
 
 const router = Router();
 
+// GET /api/documents/stats — resumen de KPIs por cuenta
+router.get('/stats', async (req, res) => {
+  const { accountId, userId, isAdmin } = req.mondayContext;
+
+  const accountFilter = isAdmin
+    ? `monday_account_id = $1`
+    : `monday_account_id = $1 AND monday_user_id = $2`;
+  const params = isAdmin ? [accountId] : [accountId, userId];
+
+  const [counts, recent, byTemplate] = await Promise.all([
+    query(
+      `SELECT status, COUNT(*) AS count
+       FROM documents WHERE ${accountFilter}
+       GROUP BY status`,
+      params
+    ),
+    query(
+      `SELECT id, name, status, pdf_url, created_at, monday_item_id
+       FROM documents WHERE ${accountFilter}
+       ORDER BY created_at DESC LIMIT 5`,
+      params
+    ),
+    query(
+      `SELECT t.name AS template_name, COUNT(d.id) AS count
+       FROM documents d
+       LEFT JOIN templates t ON t.id = d.template_id
+       WHERE ${accountFilter.replace(/\$(\d)/g, (_, n) => `$${n}`)}
+       GROUP BY t.name
+       ORDER BY count DESC LIMIT 5`,
+      params
+    ),
+  ]);
+
+  const statsMap = { draft: 0, sent: 0, signed: 0, rejected: 0 };
+  counts.rows.forEach(r => { statsMap[r.status] = Number(r.count); });
+
+  res.json({
+    total:    Object.values(statsMap).reduce((a, b) => a + b, 0),
+    ...statsMap,
+    recent:   recent.rows,
+    byTemplate: byTemplate.rows,
+  });
+});
+
 // GET /api/documents — lista documentos filtrados por cuenta, usuario e item
 // Los admins ven todos los documentos de la cuenta; usuarios normales solo los suyos
 router.get('/', async (req, res) => {

@@ -300,6 +300,7 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
       {signModalDoc && (
         <SignatureModal
           document={signModalDoc}
+          itemId={itemId}
           onClose={() => setSignModalDoc(null)}
           onSent={handleSignSent}
         />

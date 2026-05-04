@@ -145,6 +145,18 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
         monday_item_id:  itemId  ? String(itemId)  : undefined,
         filled_data:     fieldValues,
       })
+
+      // Notificación en Monday.com al item si estamos en Item View
+      if (itemId) {
+        monday.api(`
+          mutation {
+            create_update(item_id: ${itemId}, body: "📄 Se generó el documento \\"${docName}\\" desde MaxiDocs.") {
+              id
+            }
+          }
+        `).catch(() => {}) // silencioso — no bloquear si falla
+      }
+
       onGenerated(res.data)
     } catch (e) {
       setError(e.response?.data?.error || 'Error al generar el documento')

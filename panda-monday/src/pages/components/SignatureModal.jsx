@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import mondaySdk from 'monday-sdk-js'
 import api from '../../api/client.js'
+
+const monday = mondaySdk()
 
 const IconClose = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -46,7 +49,7 @@ const IconAlertCircle = () => (
   </svg>
 )
 
-export default function SignatureModal({ document, onClose, onSent }) {
+export default function SignatureModal({ document, itemId, onClose, onSent }) {
   const [signers, setSigners]   = useState([{ name: '', email: '' }])
   const [expireDays, setExpire] = useState('7')
   const [sending, setSending]   = useState(false)
@@ -79,6 +82,19 @@ export default function SignatureModal({ document, onClose, onSent }) {
         signers:      validSigners,
         expire_days:  expireDays ? Number(expireDays) : null,
       })
+
+      // Notificación en el item de Monday
+      if (itemId) {
+        const signerNames = validSigners.map(s => s.name).join(', ')
+        monday.api(`
+          mutation {
+            create_update(item_id: ${itemId}, body: "✍️ Se envió \\"${document.name}\\" a firma a: ${signerNames}.") {
+              id
+            }
+          }
+        `).catch(() => {})
+      }
+
       onSent(document)
     } catch (e) {
       setError(e.response?.data?.error || 'Error al enviar a firma')
