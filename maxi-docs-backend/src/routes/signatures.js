@@ -63,9 +63,11 @@ router.post('/send', async (req, res) => {
     );
     insertedSignatures.push(result.rows[0]);
 
-    // Email personalizado de MaxiDocs (además del que envía DocuSeal)
+    // Email personalizado de MaxiDocs con link al portal del firmante
+    const insertedSig = result.rows[0];
     if (signUrl) {
       sendSignatureRequest({
+        signatureId:  insertedSig.id,
         signerName:   signer.name,
         signerEmail:  signer.email,
         documentName: document.name,
@@ -87,7 +89,7 @@ router.post('/send', async (req, res) => {
   res.status(201).json({ signatures: insertedSignatures });
 });
 
-// GET /api/signatures/:documentId — estado detallado de firmas
+// GET /api/signatures/:documentId — estado detallado de firmas de un documento
 router.get('/:documentId', async (req, res) => {
   const result = await query(
     `SELECT id, signer_name, signer_email, status, sign_url, signed_at, created_at
@@ -95,6 +97,35 @@ router.get('/:documentId', async (req, res) => {
     [req.params.documentId]
   );
   res.json(result.rows);
+});
+
+// GET /api/portal/:signatureId — datos públicos para el portal del firmante (sin auth)
+router.get('/portal/:signatureId', async (req, res) => {
+  const result = await query(
+    `SELECT s.id, s.signer_name, s.signer_email, s.status, s.sign_url, s.signed_at,
+            d.id AS document_id, d.name AS document_name, d.pdf_url
+     FROM signatures s
+     JOIN documents d ON d.id = s.document_id
+     WHERE s.id = $1`,
+    [req.params.signatureId]
+  );
+  const row = result.rows[0];
+  if (!row) return res.status(404).json({ error: 'Firma no encontrada' });
+  res.json({
+    signature: {
+      id:           row.id,
+      signer_name:  row.signer_name,
+      signer_email: row.signer_email,
+      status:       row.status,
+      sign_url:     row.sign_url,
+      signed_at:    row.signed_at,
+    },
+    document: {
+      id:      row.document_id,
+      name:    row.document_name,
+      pdf_url: row.pdf_url,
+    },
+  });
 });
 
 // POST /api/signatures/webhook — recibe notificaciones de DocuSeal al firmar

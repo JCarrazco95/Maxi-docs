@@ -29,8 +29,13 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'maxi-docs-backend', timestamp: new Date().toISOString() });
 });
 
+// ── Portal del firmante (público, sin autenticación) ─────────────
+app.get('/api/portal/:signatureId', (req, _res, next) => {
+  req.mondayContext = { accountId: 'portal', userId: 'portal', isAdmin: false };
+  next();
+}, signaturesRouter);
+
 // ── Rutas de la API ───────────────────────────────────────────────
-// extractMondayContext extrae accountId/userId de los headers en todas las rutas
 app.use('/api', extractMondayContext);
 app.use('/api/templates', templatesRouter);
 app.use('/api/documents', documentsRouter);

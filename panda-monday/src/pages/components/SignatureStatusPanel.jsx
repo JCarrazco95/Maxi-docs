@@ -22,12 +22,18 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+function getPortalUrl(sig) {
+  // Usa el portal branded si estamos en el mismo origen, si no usa el sign_url directo
+  return `${window.location.origin}/sign/${sig.id}`
+}
+
 function buildWhatsAppUrl(sig, documentName) {
+  const portalUrl = getPortalUrl(sig)
   const msg = encodeURIComponent(
     `Hola ${sig.signer_name} 👋\n\n` +
     `Te comparto el documento *"${documentName}"* para tu revisión y firma digital.\n\n` +
-    `🔗 Firmar aquí: ${sig.sign_url}\n\n` +
-    `_Enviado via MaxiDocs_`
+    `🔗 Firmar aquí: ${portalUrl}\n\n` +
+    `_Enviado via MaxiDocs · MAXIRent_`
   )
   return `https://wa.me/?text=${msg}`
 }
@@ -52,13 +58,13 @@ export default function SignatureStatusPanel({ documentId, documentName, documen
   useEffect(() => { load() }, [load])
 
   async function copyLink(sig) {
-    if (!sig.sign_url) return
+    const url = getPortalUrl(sig)
     try {
-      await navigator.clipboard.writeText(sig.sign_url)
+      await navigator.clipboard.writeText(url)
       setCopied(sig.id)
       setTimeout(() => setCopied(null), 2000)
     } catch {
-      window.open(sig.sign_url, '_blank')
+      window.open(url, '_blank')
     }
   }
 

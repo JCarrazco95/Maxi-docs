@@ -126,11 +126,20 @@ function documentSignedTemplate({ documentName, pdfUrl, signerName }) {
 
 // ── Exports ───────────────────────────────────────────────────
 
-export async function sendSignatureRequest({ signerName, signerEmail, documentName, signUrl, senderNote, expireDays }) {
+// Construye la URL del portal del firmante si PUBLIC_URL está configurado,
+// si no, usa el signUrl directo de DocuSeal
+function buildPortalUrl(signatureId, signUrl) {
+  const publicUrl = process.env.PUBLIC_URL;
+  if (publicUrl && signatureId) return `${publicUrl}/sign/${signatureId}`;
+  return signUrl;
+}
+
+export async function sendSignatureRequest({ signatureId, signerName, signerEmail, documentName, signUrl, senderNote, expireDays }) {
+  const portalUrl = buildPortalUrl(signatureId, signUrl);
   await send({
     to:      signerEmail,
     subject: `✍️ Documento para firma: ${documentName}`,
-    html:    signatureRequestTemplate({ signerName, documentName, signUrl, senderNote, expireDays }),
+    html:    signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, expireDays }),
   });
 }
 
