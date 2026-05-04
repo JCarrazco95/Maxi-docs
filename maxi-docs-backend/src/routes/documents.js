@@ -15,26 +15,44 @@ router.get('/stats', async (req, res) => {
     : `monday_account_id = $1 AND monday_user_id = $2`;
   const params = isAdmin ? [accountId] : [accountId, userId];
 
-  const [counts, recent, byTemplate] = await Promise.all([
-    query(
-      `SELECT status, COUNT(*) AS count
-       FROM documents WHERE ${accountFilter}
-       GROUP BY status`,
-      params
-    ),
-    query(
-      `SELECT id, name, status, pdf_url, created_at, monday_item_id
-       FROM documents WHERE ${accountFilter}
-       ORDER BY created_at DESC LIMIT 5`,
-      params
-    ),
+  const [counts, recent, byTemplate, timingRow, overdueRow, periodRows] = await Promise.all([
+    // Conteos por status
+    query(`SELECT status, COUNT(*) AS count FROM documents WHERE ${accountFilter} GROUP BY status`, params),
+
+    // Últimos 5 docs
+    query(`SELECT id, name, status, pdf_url, created_at, monday_item_id FROM documents WHERE ${accountFilter} ORDER BY created_at DESC LIMIT 5`, params),
+
+    // Docs por plantilla
     query(
       `SELECT t.name AS template_name, COUNT(d.id) AS count
+       FROM documents d LEFT JOIN templates t ON t.id = d.template_id
+       WHERE ${accountFilter} GROUP BY t.name ORDER BY count DESC LIMIT 5`,
+      params
+    ),
+
+    // Tiempo promedio hasta firma (días)
+    query(
+      `SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s.signed_at - d.created_at)) / 86400), 1) AS avg_days
        FROM documents d
-       LEFT JOIN templates t ON t.id = d.template_id
-       WHERE ${accountFilter.replace(/\$(\d)/g, (_, n) => `$${n}`)}
-       GROUP BY t.name
-       ORDER BY count DESC LIMIT 5`,
+       JOIN signatures s ON s.document_id = d.id
+       WHERE ${accountFilter} AND s.status = 'signed' AND s.signed_at IS NOT NULL`,
+      params
+    ),
+
+    // Docs enviados hace más de 7 días sin firmar (overdue)
+    query(
+      `SELECT COUNT(*) AS count FROM documents
+       WHERE ${accountFilter} AND status = 'sent'
+       AND created_at < NOW() - INTERVAL '7 days'`,
+      params
+    ),
+
+    // Docs por período (últimos 30 días, agrupados por semana)
+    query(
+      `SELECT DATE_TRUNC('week', created_at) AS week, COUNT(*) AS count
+       FROM documents WHERE ${accountFilter}
+       AND created_at > NOW() - INTERVAL '30 days'
+       GROUP BY week ORDER BY week`,
       params
     ),
   ]);
@@ -43,11 +61,68 @@ router.get('/stats', async (req, res) => {
   counts.rows.forEach(r => { statsMap[r.status] = Number(r.count); });
 
   res.json({
-    total:    Object.values(statsMap).reduce((a, b) => a + b, 0),
+    total:       Object.values(statsMap).reduce((a, b) => a + b, 0),
     ...statsMap,
-    recent:   recent.rows,
-    byTemplate: byTemplate.rows,
+    avgSigningDays: timingRow.rows[0]?.avg_days ? Number(timingRow.rows[0].avg_days) : null,
+    overdue:        Number(overdueRow.rows[0]?.count ?? 0),
+    recent:         recent.rows,
+    byTemplate:     byTemplate.rows,
+    byWeek:         periodRows.rows.map(r => ({
+      week:  new Date(r.week).toLocaleDateString('es', { day: '2-digit', month: 'short' }),
+      count: Number(r.count),
+    })),
   });
+});
+
+// GET /api/documents/export — descarga CSV con historial completo
+router.get('/export', async (req, res) => {
+  const { accountId, userId, isAdmin } = req.mondayContext;
+  const accountFilter = isAdmin
+    ? `d.monday_account_id = $1`
+    : `d.monday_account_id = $1 AND d.monday_user_id = $2`;
+  const params = isAdmin ? [accountId] : [accountId, userId];
+
+  const result = await query(
+    `SELECT d.name AS documento,
+            t.name AS plantilla,
+            d.status AS estado,
+            d.monday_item_id AS item_monday,
+            d.created_at AS fecha_creacion,
+            d.pdf_url,
+            STRING_AGG(s.signer_name || ' <' || s.signer_email || '> [' || s.status || ']', '; ') AS firmantes
+     FROM documents d
+     LEFT JOIN templates t ON t.id = d.template_id
+     LEFT JOIN signatures s ON s.document_id = d.id
+     WHERE ${accountFilter}
+     GROUP BY d.id, t.name
+     ORDER BY d.created_at DESC`,
+    params
+  );
+
+  const statusLabel = { draft: 'Borrador', sent: 'Enviado', signed: 'Firmado', rejected: 'Rechazado' };
+  const rows = result.rows;
+
+  // Construir CSV
+  const headers = ['Documento', 'Plantilla', 'Estado', 'Item Monday', 'Fecha', 'PDF', 'Firmantes'];
+  const lines = [
+    headers.join(','),
+    ...rows.map(r => [
+      `"${(r.documento ?? '').replace(/"/g, '""')}"`,
+      `"${(r.plantilla ?? '').replace(/"/g, '""')}"`,
+      `"${statusLabel[r.estado] ?? r.estado}"`,
+      `"${r.item_monday ?? ''}"`,
+      `"${new Date(r.fecha_creacion).toLocaleString('es')}"`,
+      `"${r.pdf_url ?? ''}"`,
+      `"${(r.firmantes ?? '').replace(/"/g, '""')}"`,
+    ].join(','))
+  ];
+
+  const csv = '﻿' + lines.join('\r\n'); // BOM para Excel
+  const filename = `maxi-docs-${new Date().toISOString().split('T')[0]}.csv`;
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(csv);
 });
 
 // GET /api/documents — lista documentos filtrados por cuenta, usuario e item

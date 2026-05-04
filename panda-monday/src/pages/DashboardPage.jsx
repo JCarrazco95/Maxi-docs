@@ -9,6 +9,30 @@ const IconDraft    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentC
 const IconRefresh  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
 const IconTemplate = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
 const IconLink     = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+const IconClock    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+const IconAlert    = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+
+// Mini gráfica de barras semanal
+function WeeklyChart({ data }) {
+  if (!data?.length) return null
+  const max = Math.max(...data.map(d => d.count), 1)
+  return (
+    <div className="weekly-chart">
+      {data.map((d, i) => (
+        <div key={i} className="weekly-bar-col">
+          <div className="weekly-bar-wrap">
+            <div
+              className="weekly-bar-fill"
+              style={{ height: `${Math.round((d.count / max) * 100)}%` }}
+              title={`${d.week}: ${d.count} docs`}
+            />
+          </div>
+          <div className="weekly-bar-label">{d.week}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const STATUS_LABEL = { draft: 'Borrador', sent: 'Enviado', signed: 'Firmado', rejected: 'Rechazado' }
 const STATUS_CLASS  = { draft: 'badge-draft', sent: 'badge-sent', signed: 'badge-signed', rejected: 'badge-rejected' }
@@ -90,21 +114,51 @@ export default function DashboardPage({ isAdmin, userName }) {
             <StatCard icon={<IconCheck />} label="Firmados"          value={stats.signed}   color="var(--success)" />
           </div>
 
-          {/* ── Tasa de firma ────────────────────────────── */}
-          {stats.total > 0 && (
-            <div className="sign-rate-card">
-              <div className="sign-rate-header">
-                <span className="sign-rate-label">Tasa de firma</span>
-                <span className="sign-rate-value">{signRate}%</span>
+          {/* ── Métricas secundarias ─────────────────────── */}
+          <div className="metrics-row">
+            {/* Tasa de firma */}
+            {stats.total > 0 && (
+              <div className="sign-rate-card">
+                <div className="sign-rate-header">
+                  <span className="sign-rate-label">Tasa de firma</span>
+                  <span className="sign-rate-value">{signRate}%</span>
+                </div>
+                <div className="sign-rate-bar">
+                  <div className="sign-rate-fill" style={{ width: `${signRate}%` }} />
+                </div>
+                <div className="sign-rate-sub">{stats.signed} de {stats.total} documentos firmados</div>
               </div>
-              <div className="sign-rate-bar">
-                <div
-                  className="sign-rate-fill"
-                  style={{ width: `${signRate}%` }}
-                />
+            )}
+
+            {/* Tiempo promedio a firma */}
+            <div className="metric-mini-card">
+              <div className="metric-mini-icon" style={{ color: 'var(--primary)' }}><IconClock /></div>
+              <div>
+                <div className="metric-mini-value">
+                  {stats.avgSigningDays != null ? `${stats.avgSigningDays} días` : '—'}
+                </div>
+                <div className="metric-mini-label">Tiempo promedio para firmar</div>
               </div>
-              <div className="sign-rate-sub">
-                {stats.signed} de {stats.total} documentos firmados
+            </div>
+
+            {/* Overdue alert */}
+            {stats.overdue > 0 && (
+              <div className="metric-mini-card overdue">
+                <div className="metric-mini-icon" style={{ color: 'var(--danger)' }}><IconAlert /></div>
+                <div>
+                  <div className="metric-mini-value" style={{ color: 'var(--danger)' }}>{stats.overdue}</div>
+                  <div className="metric-mini-label">Sin firmar hace +7 días</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Gráfica semanal */}
+          {stats.byWeek?.length > 1 && (
+            <div className="dash-section" style={{ marginBottom: 16 }}>
+              <div className="dash-section-title"><IconDoc /> Documentos últimos 30 días</div>
+              <div style={{ padding: '16px 16px 8px' }}>
+                <WeeklyChart data={stats.byWeek} />
               </div>
             </div>
           )}

@@ -68,6 +68,21 @@ const IconAlertCircle = () => (
   </svg>
 )
 
+const IconDownload = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+)
+
+const IconSearch = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"/>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+)
+
 const IconChevron = ({ open }) => (
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
     style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
@@ -76,16 +91,46 @@ const IconChevron = ({ open }) => (
 )
 
 export default function DocumentsPage({ itemId, boardId, userId, userName, isAdmin }) {
-  const [documents, setDocuments]       = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [error, setError]               = useState(null)
+  const [documents, setDocuments]         = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [error, setError]                 = useState(null)
   const [generatorOpen, setGeneratorOpen] = useState(false)
-  const [signModalDoc, setSignModalDoc] = useState(null)
-  const [expandedDocId, setExpandedDocId] = useState(null)   // fila expandida con panel de firmas
+  const [signModalDoc, setSignModalDoc]   = useState(null)
+  const [expandedDocId, setExpandedDocId] = useState(null)
+  const [search, setSearch]               = useState('')
+  const [statusFilter, setStatusFilter]   = useState('all')
+  const [exporting, setExporting]         = useState(false)
 
   function toggleExpand(docId) {
     setExpandedDocId(prev => prev === docId ? null : docId)
   }
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const res = await api.get('/api/documents/export', {
+        responseType: 'blob',
+        headers: { Accept: 'text/csv' },
+      })
+      const url  = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8;' }))
+      const link = document.createElement('a')
+      link.href  = url
+      link.download = `maxi-docs-${new Date().toISOString().split('T')[0]}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Error al exportar')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  // Filtrado client-side
+  const filtered = documents.filter(doc => {
+    const matchStatus = statusFilter === 'all' || doc.status === statusFilter
+    const matchSearch = !search || doc.name.toLowerCase().includes(search.toLowerCase())
+    return matchStatus && matchSearch
+  })
 
   const loadDocuments = useCallback(async () => {
     try {
@@ -159,18 +204,52 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
           </div>
         </div>
         <div className="page-header-actions">
+          <button className="btn btn-secondary" onClick={handleExport} disabled={exporting} title="Exportar a Excel/CSV">
+            <IconDownload /> {exporting ? 'Exportando…' : 'Exportar CSV'}
+          </button>
           <button className="btn btn-primary" onClick={() => setGeneratorOpen(true)}>
             <IconPlus /> Generar documento
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="error-msg">
-          <IconAlertCircle />
-          {error}
+      {error && <div className="error-msg"><IconAlertCircle />{error}</div>}
+
+      {/* ── Barra de filtros ─────────────────────────────── */}
+      <div className="filter-bar">
+        <div className="filter-search">
+          <IconSearch />
+          <input
+            className="filter-search-input"
+            placeholder="Buscar documento…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
-      )}
+        <div className="filter-tabs">
+          {[
+            { key: 'all',      label: 'Todos',    count: documents.length },
+            { key: 'draft',    label: 'Borradores' },
+            { key: 'sent',     label: 'Enviados' },
+            { key: 'signed',   label: 'Firmados' },
+            { key: 'rejected', label: 'Rechazados' },
+          ].map(f => {
+            const count = f.key === 'all'
+              ? documents.length
+              : documents.filter(d => d.status === f.key).length
+            return count > 0 || f.key === 'all' ? (
+              <button
+                key={f.key}
+                className={`filter-tab ${statusFilter === f.key ? 'active' : ''}`}
+                onClick={() => setStatusFilter(f.key)}
+              >
+                {f.label}
+                <span className="filter-tab-count">{count}</span>
+              </button>
+            ) : null
+          })}
+        </div>
+      </div>
 
       {documents.length === 0 && !error ? (
         <div className="empty-state">
@@ -197,7 +276,12 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
               </tr>
             </thead>
             <tbody>
-              {documents.map(doc => (
+              {filtered.length === 0 && (
+                <tr><td colSpan={isAdmin ? 6 : 5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)', fontSize: 13 }}>
+                  No hay documentos que coincidan con el filtro
+                </td></tr>
+              )}
+              {filtered.map(doc => (
                 <>
                 <tr key={doc.id} className={expandedDocId === doc.id ? 'row-expanded' : ''}>
                   <td>
