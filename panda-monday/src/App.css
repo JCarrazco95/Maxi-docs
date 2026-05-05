@@ -1347,6 +1347,20 @@ hr.divider {
 }
 .ProseMirror .selectedCell { background: #e6effd; }
 
+/* Imágenes en el editor */
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  cursor: pointer;
+  display: block;
+  margin: 8px 0;
+}
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 3px solid var(--primary);
+  border-radius: 4px;
+}
+
 .ProseMirror p.is-editor-empty:first-child::before {
   color: var(--text-tertiary);
   content: attr(data-placeholder);

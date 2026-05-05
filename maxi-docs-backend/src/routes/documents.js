@@ -10,47 +10,46 @@ const router = Router();
 router.get('/stats', async (req, res) => {
   const { accountId, userId, isAdmin } = req.mondayContext;
 
-  const accountFilter = isAdmin
+  // Filtros con alias de tabla explícito para evitar ambigüedad en JOINs
+  const docFilter = isAdmin
+    ? `d.monday_account_id = $1`
+    : `d.monday_account_id = $1 AND d.monday_user_id = $2`;
+  const simpleFilter = isAdmin
     ? `monday_account_id = $1`
     : `monday_account_id = $1 AND monday_user_id = $2`;
   const params = isAdmin ? [accountId] : [accountId, userId];
 
   const [counts, recent, byTemplate, timingRow, overdueRow, periodRows] = await Promise.all([
-    // Conteos por status
-    query(`SELECT status, COUNT(*) AS count FROM documents WHERE ${accountFilter} GROUP BY status`, params),
+    query(`SELECT status, COUNT(*) AS count FROM documents WHERE ${simpleFilter} GROUP BY status`, params),
 
-    // Últimos 5 docs
-    query(`SELECT id, name, status, pdf_url, created_at, monday_item_id FROM documents WHERE ${accountFilter} ORDER BY created_at DESC LIMIT 5`, params),
+    query(`SELECT id, name, status, pdf_url, created_at, monday_item_id FROM documents WHERE ${simpleFilter} ORDER BY created_at DESC LIMIT 5`, params),
 
-    // Docs por plantilla
+    // byTemplate usa alias d. para evitar ambigüedad con el JOIN
     query(
       `SELECT t.name AS template_name, COUNT(d.id) AS count
        FROM documents d LEFT JOIN templates t ON t.id = d.template_id
-       WHERE ${accountFilter} GROUP BY t.name ORDER BY count DESC LIMIT 5`,
+       WHERE ${docFilter} GROUP BY t.name ORDER BY count DESC LIMIT 5`,
       params
     ),
 
-    // Tiempo promedio hasta firma (días)
+    // timingRow: JOIN con signatures — usa alias d.
     query(
       `SELECT ROUND(AVG(EXTRACT(EPOCH FROM (s.signed_at - d.created_at)) / 86400), 1) AS avg_days
-       FROM documents d
-       JOIN signatures s ON s.document_id = d.id
-       WHERE ${accountFilter} AND s.status = 'signed' AND s.signed_at IS NOT NULL`,
+       FROM documents d JOIN signatures s ON s.document_id = d.id
+       WHERE ${docFilter} AND s.status = 'signed' AND s.signed_at IS NOT NULL`,
       params
     ),
 
-    // Docs enviados hace más de 7 días sin firmar (overdue)
     query(
       `SELECT COUNT(*) AS count FROM documents
-       WHERE ${accountFilter} AND status = 'sent'
+       WHERE ${simpleFilter} AND status = 'sent'
        AND created_at < NOW() - INTERVAL '7 days'`,
       params
     ),
 
-    // Docs por período (últimos 30 días, agrupados por semana)
     query(
       `SELECT DATE_TRUNC('week', created_at) AS week, COUNT(*) AS count
-       FROM documents WHERE ${accountFilter}
+       FROM documents WHERE ${simpleFilter}
        AND created_at > NOW() - INTERVAL '30 days'
        GROUP BY week ORDER BY week`,
       params

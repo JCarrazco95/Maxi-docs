@@ -111,29 +111,14 @@ export default function SignatureStatusPanel({ documentId, documentName, documen
                 </span>
 
                 {sig.status === 'pending' && sig.sign_url && (
-                  <>
-                    {/* Copiar link */}
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => copyLink(sig)}
-                      title="Copiar link de firma"
-                    >
-                      <IconCopy />
-                      {copied === sig.id ? '¡Copiado!' : 'Copiar'}
-                    </button>
-
-                    {/* WhatsApp */}
-                    <a
-                      className="btn btn-whatsapp btn-sm"
-                      href={buildWhatsAppUrl(sig, documentName ?? 'documento')}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Enviar por WhatsApp"
-                    >
-                      <IconWhatsApp />
-                      WhatsApp
-                    </a>
-                  </>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => copyLink(sig)}
+                    title="Copiar link de firma"
+                  >
+                    <IconCopy />
+                    {copied === sig.id ? '¡Copiado!' : 'Copiar link'}
+                  </button>
                 )}
 
                 {sig.status === 'signed' && (

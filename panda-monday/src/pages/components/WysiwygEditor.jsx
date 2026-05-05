@@ -7,7 +7,10 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import Placeholder from '@tiptap/extension-placeholder'
-import { useState, useCallback } from 'react'
+import { Image } from '@tiptap/extension-image'
+import { TextStyle } from '@tiptap/extension-text-style'
+import { Color } from '@tiptap/extension-color'
+import { useState, useCallback, useRef } from 'react'
 
 // ── Iconos SVG inline ─────────────────────────────────────────
 const B       = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>
@@ -22,6 +25,8 @@ const TableIc = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none
 const VarIc   = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
 const Undo    = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
 const Redo    = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
+const ImgIc   = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+const ColorIc = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
 
 function Btn({ onClick, active, title, children, disabled }) {
   return (
@@ -37,6 +42,59 @@ function Btn({ onClick, active, title, children, disabled }) {
   )
 }
 const Sep = () => <div className="toolbar-sep" />
+
+// ── Image picker ──────────────────────────────────────────────
+function ImagePicker({ onInsert }) {
+  const [open, setOpen]   = useState(false)
+  const [url, setUrl]     = useState('')
+  const fileRef           = useRef(null)
+
+  function insertUrl() {
+    const u = url.trim()
+    if (u) { onInsert(u); setUrl(''); setOpen(false) }
+  }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => { onInsert(ev.target.result); setOpen(false) }
+    reader.readAsDataURL(file)
+  }
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }}>
+      <button type="button" className={`toolbar-btn${open ? ' is-active' : ''}`}
+        onMouseDown={e => { e.preventDefault(); setOpen(o => !o) }} title="Insertar imagen">
+        <ImgIc /> Imagen
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '110%', left: 0, zIndex: 200,
+          background: 'white', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
+          padding: '12px', width: 280,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Subir archivo</div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+          <button type="button" className="btn btn-secondary btn-sm" style={{ width: '100%', marginBottom: 10 }}
+            onMouseDown={e => { e.preventDefault(); fileRef.current?.click() }}>
+            📁 Seleccionar imagen del equipo
+          </button>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>O pegar URL</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input autoFocus className="form-input" placeholder="https://imagen.com/logo.png" value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); insertUrl() } if (e.key === 'Escape') setOpen(false) }}
+              style={{ fontSize: 12, padding: '4px 8px', flex: 1 }} />
+            <button type="button" className="btn btn-primary btn-sm"
+              onMouseDown={e => { e.preventDefault(); insertUrl() }}>OK</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Variable picker inline ────────────────────────────────────
 function VarPicker({ onInsert }) {
@@ -92,11 +150,14 @@ export default function WysiwygEditor({ value, onChange }) {
     extensions: [
       StarterKit,
       Underline,
+      TextStyle,
+      Color,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Table.configure({ resizable: false }),
       TableRow,
       TableHeader,
       TableCell,
+      Image.configure({ inline: false, allowBase64: true }),
       Placeholder.configure({ placeholder: 'Escribe el contenido del documento aquí…' }),
     ],
     content: value || '',
@@ -105,6 +166,10 @@ export default function WysiwygEditor({ value, onChange }) {
 
   const insertVar = useCallback((varName) => {
     editor?.chain().focus().insertContent(`{{${varName}}}`).run()
+  }, [editor])
+
+  const insertImage = useCallback((src) => {
+    editor?.chain().focus().setImage({ src }).run()
   }, [editor])
 
   if (!editor) return null
@@ -132,6 +197,15 @@ export default function WysiwygEditor({ value, onChange }) {
           onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
           title="Insertar tabla"
         ><TableIc /></Btn>
+        <Sep />
+        {/* Color de texto */}
+        <label className="toolbar-btn" title="Color de texto" style={{ gap: 4, cursor: 'pointer' }}>
+          <ColorIc />
+          <input type="color" style={{ width: 16, height: 16, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
+            onChange={e => editor.chain().focus().setColor(e.target.value).run()} />
+        </label>
+        <Sep />
+        <ImagePicker onInsert={insertImage} />
         <Sep />
         <VarPicker onInsert={insertVar} />
         <Sep />
