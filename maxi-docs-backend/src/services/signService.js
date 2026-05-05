@@ -58,13 +58,24 @@ export async function sendForSignature({ documentName, pdfUrl, signers, expireDa
     documentSource = { name: documentName, url: pdfUrl };
   }
 
-  // Campo de firma único — se coloca en la última página, parte inferior
-  // DocuSeal usa porcentajes: x/y/w/h respecto al tamaño de la página
+  // Campo de firma único en la primera página, en el bloque de firmas de la propuesta
+  // Coordenadas en porcentaje del tamaño de la página (A4)
+  // x=5%  → margen izquierdo
+  // y=77% → ~77% desde arriba (zona de firma "Nombre y firma del cliente")
+  // w=38% → ancho del bloque izquierdo
+  // h=9%  → altura del campo
+  // Para ajustar: modifica SIGNATURE_X, SIGNATURE_Y en .env o edita aquí directamente
+  const SIG_X = Number(process.env.SIGNATURE_X ?? 5);
+  const SIG_Y = Number(process.env.SIGNATURE_Y ?? 77);
+  const SIG_W = Number(process.env.SIGNATURE_W ?? 38);
+  const SIG_H = Number(process.env.SIGNATURE_H ?? 9);
+  const SIG_P = Number(process.env.SIGNATURE_PAGE ?? 1);
+
   const signatureField = {
     name:     'Firma del cliente',
     type:     'signature',
     required: true,
-    position: { x: 5, y: 80, w: 40, h: 10, page: 1 },
+    position: { x: SIG_X, y: SIG_Y, w: SIG_W, h: SIG_H, page: SIG_P },
   };
 
   const template = await docusealPost('/templates/pdf', {
