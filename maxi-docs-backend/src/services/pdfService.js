@@ -1,15 +1,48 @@
 import puppeteer from 'puppeteer';
+import { buildPricingTableHtml } from './catalogService.js';
+
+// ── Procesa nodos <pricing-table> embebidos en el HTML ────────
+// Los nodos guardan items como base64 JSON en data-items-b64
+function processPricingTableNodes(html) {
+  return html.replace(
+    /<pricing-table([^>]*)><\/pricing-table>/g,
+    (_, attrs) => {
+      try {
+        const titleM = attrs.match(/data-title="([^"]*)"/)
+        const b64M   = attrs.match(/data-items-b64="([^"]*)"/)
+        const ivaM   = attrs.match(/data-iva="([^"]*)"/)
+
+        const title = titleM?.[1] ?? 'Cotización'
+        const items = b64M
+          ? JSON.parse(Buffer.from(b64M[1], 'base64').toString('utf8'))
+          : []
+        const iva   = Number(ivaM?.[1] ?? 16)
+
+        if (!items?.length) return ''
+
+        return `<div style="margin:16px 0;">
+          <div style="font-weight:bold;font-size:11pt;margin-bottom:8px;color:#1B3055;">
+            ${title.toUpperCase()}
+          </div>
+          ${buildPricingTableHtml(items, iva)}
+        </div>`
+      } catch {
+        return ''
+      }
+    }
+  )
+}
 
 /**
- * Reemplaza variables {{nombre_variable}} en el HTML con los valores reales.
- * @param {string} html
- * @param {Record<string, string>} data — ej: { nombre: 'Juan', empresa: 'Acme' }
+ * Reemplaza variables {{nombre_variable}} en el HTML con los valores reales
+ * y procesa los nodos <pricing-table> embebidos en el documento.
  */
 export function fillTemplate(html, data) {
-  return html.replace(/\{\{(\w+)\}\}/g, (_match, key) => {
-    // Si no hay valor, dejamos string vacío — evita que DocuSeal lo detecte como campo editable
-    return data[key] ?? '';
-  });
+  // 1. Reemplazar variables
+  let result = html.replace(/\{\{(\w+)\}\}/g, (_match, key) => data[key] ?? '')
+  // 2. Procesar tablas de precios interactivas
+  result = processPricingTableNodes(result)
+  return result
 }
 
 /**

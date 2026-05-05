@@ -10,6 +10,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { Image } from '@tiptap/extension-image'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
+import { PricingTable } from './PricingTableExtension.js'
 import { useState, useCallback, useRef } from 'react'
 
 // ── Iconos SVG inline ─────────────────────────────────────────
@@ -22,6 +23,7 @@ const AlignR  = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none
 const ListUl  = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1" fill="currentColor" stroke="none"/></svg>
 const ListOl  = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2" y="8" fontSize="7" fill="currentColor" stroke="none" fontWeight="bold">1.</text></svg>
 const TableIc = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
+const PriceIc = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
 const VarIc   = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
 const Undo    = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
 const Redo    = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
@@ -158,6 +160,7 @@ export default function WysiwygEditor({ value, onChange }) {
       TableHeader,
       TableCell,
       Image.configure({ inline: false, allowBase64: true }),
+      PricingTable,
       Placeholder.configure({ placeholder: 'Escribe el contenido del documento aquí…' }),
     ],
     content: value || '',
@@ -206,6 +209,17 @@ export default function WysiwygEditor({ value, onChange }) {
         </label>
         <Sep />
         <ImagePicker onInsert={insertImage} />
+        <Sep />
+        {/* Tabla de precios interactiva */}
+        <Btn
+          onClick={() => {
+            const t = window.prompt('Título de la tabla de precios:', 'COTIZACIÓN RENTA')
+            if (t !== null) editor.chain().focus().insertPricingTable({ title: t || 'COTIZACIÓN RENTA' }).run()
+          }}
+          title="Insertar tabla de precios (catálogo)"
+        >
+          <PriceIc /> Tabla precios
+        </Btn>
         <Sep />
         <VarPicker onInsert={insertVar} />
         <Sep />
