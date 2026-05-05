@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db/connection.js';
 import { fillTemplate, generatePdf, wrapDocumentHtml } from '../services/pdfService.js';
 import { uploadPdf, buildPdfKey } from '../services/storageService.js';
+import { buildPricingTableHtml } from '../services/catalogService.js';
 
 const router = Router();
 
@@ -177,7 +178,9 @@ router.post('/generate', async (req, res) => {
     name,
     monday_board_id,
     monday_item_id,
-    filled_data = {},   // { nombre: 'Juan', empresa: 'Acme', ... }
+    filled_data = {},         // { nombre: 'Juan', empresa: 'Acme', ... }
+    catalog_items = [],       // [{ name, sku, price, quantity }]
+    catalog_iva = 16,         // % de IVA para la tabla de precios
   } = req.body;
 
   if (!template_id || !name) {
@@ -193,7 +196,12 @@ router.post('/generate', async (req, res) => {
   if (!template) return res.status(404).json({ error: 'Template not found' });
 
   // 2. Reemplazar variables en el HTML
-  const filledHtml = fillTemplate(template.content_html, filled_data);
+  // Si hay items del catálogo, generar tabla de precios y agregarla a filled_data
+  const enrichedData = { ...filled_data };
+  if (catalog_items.length > 0) {
+    enrichedData.tabla_renta = buildPricingTableHtml(catalog_items, catalog_iva);
+  }
+  const filledHtml = fillTemplate(template.content_html, enrichedData);
   const fullHtml = wrapDocumentHtml(filledHtml, name);
 
   // 3. Generar PDF con Puppeteer

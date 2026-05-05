@@ -7,6 +7,7 @@ import { extractMondayContext } from './src/middleware/mondayAuth.js';
 import templatesRouter from './src/routes/templates.js';
 import documentsRouter from './src/routes/documents.js';
 import signaturesRouter from './src/routes/signatures.js';
+import catalogRouter   from './src/routes/catalog.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +41,7 @@ app.use('/api', extractMondayContext);
 app.use('/api/templates', templatesRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/signatures', signaturesRouter);
+app.use('/api/catalog',   catalogRouter);
 
 // ── Error handler global ─────────────────────────────────────────
 app.use((err, _req, res, _next) => {

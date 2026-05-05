@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import mondaySdk from 'monday-sdk-js'
 import api from '../../api/client.js'
+import CatalogPickerModal from './CatalogPickerModal.jsx'
 
 const monday = mondaySdk()
 
@@ -112,6 +113,9 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
   const [loadingItem, setLoadingItem]     = useState(false)
   const [generating, setGenerating]       = useState(false)
   const [error, setError]                 = useState(null)
+  const [catalogOpen, setCatalogOpen]     = useState(false)
+  const [catalogItems, setCatalogItems]   = useState([])   // items seleccionados del catálogo
+  const [catalogIva, setCatalogIva]       = useState(16)
 
   useEffect(() => {
     api.get('/api/templates')
@@ -177,6 +181,8 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
         monday_board_id: boardId ? String(boardId) : undefined,
         monday_item_id:  itemId  ? String(itemId)  : undefined,
         filled_data:     fieldValues,
+        catalog_items:   catalogItems,
+        catalog_iva:     catalogIva,
       })
 
       // Notificación en Monday.com al item si estamos en Item View
@@ -362,6 +368,47 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
               </>
             )}
 
+            {/* ── Tabla de precios del catálogo ───────────── */}
+            <hr className="divider" />
+            <div className="fields-section-header">
+              <span className="fields-section-title">
+                Tabla de precios
+                {catalogItems.length > 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 400, marginLeft: 6 }}>
+                    ✓ {catalogItems.length} servicio{catalogItems.length !== 1 ? 's' : ''} seleccionado{catalogItems.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </span>
+              <button type="button" className="btn btn-secondary btn-sm"
+                onClick={() => setCatalogOpen(true)}>
+                🗂️ {catalogItems.length > 0 ? 'Editar catálogo' : 'Seleccionar del catálogo'}
+              </button>
+            </div>
+
+            {catalogItems.length > 0 && (
+              <div className="catalog-mini-summary">
+                {catalogItems.map(item => (
+                  <div key={item.id} className="catalog-mini-row">
+                    <span>{item.quantity}× {item.name}</span>
+                    <span>${(item.price * item.quantity).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+                <div className="catalog-mini-total">
+                  Total c/IVA {catalogIva}%:&nbsp;
+                  <strong>${(catalogItems.reduce((s, i) => s + i.price * i.quantity, 0) * (1 + catalogIva / 100))
+                    .toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                  </strong>
+                </div>
+              </div>
+            )}
+
+            {catalogItems.length === 0 && (
+              <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '4px 0 0' }}>
+                Opcional — selecciona servicios del catálogo para generar la tabla de cotización automáticamente.
+                Usa la variable <strong>{'{{tabla_renta}}'}</strong> en la plantilla para posicionarla.
+              </p>
+            )}
+
             {generating && (
               <div className="generating-strip">
                 <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
@@ -387,6 +434,18 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
           </div>
         </form>
       </div>
+
+      {catalogOpen && (
+        <CatalogPickerModal
+          initialItems={catalogItems}
+          onClose={() => setCatalogOpen(false)}
+          onConfirm={({ items, ivaRate }) => {
+            setCatalogItems(items)
+            setCatalogIva(ivaRate)
+            setCatalogOpen(false)
+          }}
+        />
+      )}
     </div>
   )
 }
