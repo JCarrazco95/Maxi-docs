@@ -6,8 +6,9 @@ import puppeteer from 'puppeteer';
  * @param {Record<string, string>} data — ej: { nombre: 'Juan', empresa: 'Acme' }
  */
 export function fillTemplate(html, data) {
-  return html.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-    return data[key] ?? match; // si no hay valor, deja la variable sin reemplazar
+  return html.replace(/\{\{(\w+)\}\}/g, (_match, key) => {
+    // Si no hay valor, dejamos string vacío — evita que DocuSeal lo detecte como campo editable
+    return data[key] ?? '';
   });
 }
 

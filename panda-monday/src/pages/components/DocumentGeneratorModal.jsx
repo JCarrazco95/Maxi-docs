@@ -12,17 +12,40 @@ function normalize(str) {
     .replace(/[^a-z0-9_]/g, '')
 }
 
+// Mapeo automático mejorado — puntúa similitud entre variable y columna
+function scoreMatch(varName, colTitle) {
+  const vn = normalize(varName)
+  const ct = normalize(colTitle)
+  if (vn === ct) return 3                      // coincidencia exacta
+  if (ct.includes(vn) || vn.includes(ct)) return 2  // una contiene a la otra
+  // coincidencia parcial de palabras
+  const vParts = vn.split('_')
+  const cParts = ct.split('_')
+  const shared = vParts.filter(p => cParts.includes(p)).length
+  return shared > 0 ? 1 : 0
+}
+
 function mapMondayColumns(columns, variables) {
   const prefilled = {}
   for (const variable of variables) {
-    const varNorm = normalize(variable)
-    const match = columns.find(col => {
-      const colNorm = normalize(col.title)
-      return colNorm === varNorm || colNorm.includes(varNorm) || varNorm.includes(colNorm)
-    })
-    if (match?.text) prefilled[variable] = match.text
+    let bestCol = null, bestScore = 0
+    for (const col of columns) {
+      const score = scoreMatch(variable, col.title)
+      if (score > bestScore) { bestScore = score; bestCol = col }
+    }
+    if (bestScore > 0 && bestCol?.text) prefilled[variable] = bestCol.text
   }
   return prefilled
+}
+
+// Guarda mapeos manuales en localStorage para reusar entre sesiones
+const MAPPING_KEY = 'maxi_col_mapping'
+function loadSavedMapping() {
+  try { return JSON.parse(localStorage.getItem(MAPPING_KEY) ?? '{}') } catch { return {} }
+}
+function saveMapping(varName, colId) {
+  const m = loadSavedMapping(); m[varName] = colId
+  localStorage.setItem(MAPPING_KEY, JSON.stringify(m))
 }
 
 const IconClose = () => (
@@ -116,6 +139,20 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
     }).catch(() => {}).finally(() => setLoadingItem(false))
   }, [itemId])
 
+  // Aplica mapeos guardados sobre columnas de Monday actuales
+  function applyMondayMapping(tplVariables) {
+    if (!mondayCols.length || !tplVariables?.length) return {}
+    const saved   = loadSavedMapping()
+    const autoMap = mapMondayColumns(mondayCols, tplVariables)
+    const result  = { ...autoMap }
+    // Los mapeos guardados del usuario tienen prioridad
+    for (const [varName, colId] of Object.entries(saved)) {
+      const col = mondayCols.find(c => c.id === colId)
+      if (col?.text) result[varName] = col.text
+    }
+    return result
+  }
+
   function handleSelectTemplate(id) {
     const tpl = templates.find(t => t.id === id) ?? null
     setSelectedTpl(tpl)
@@ -124,11 +161,7 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
     const label = itemName ? ` — ${itemName}` : ''
     setDocName(`${tpl.name}${label} — ${new Date().toLocaleDateString('es')}`)
 
-    if (mondayCols.length > 0 && tpl.variables?.length > 0) {
-      setFieldValues(mapMondayColumns(mondayCols, tpl.variables))
-    } else {
-      setFieldValues({})
-    }
+    setFieldValues(applyMondayMapping(tpl.variables))
   }
 
   async function handleGenerate(e) {
@@ -267,51 +300,61 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
                 <div className="fields-section-header">
                   <span className="fields-section-title">
                     Campos del documento
+                    {mondayCols.length > 0 && (
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 6 }}>
+                        — mapea columnas de Monday una sola vez, se guardan automáticamente
+                      </span>
+                    )}
                   </span>
                   {mondayCols.length > 0 && (
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
-                      onClick={() => setFieldValues(mapMondayColumns(mondayCols, variables))}
+                      onClick={() => setFieldValues(applyMondayMapping(variables))}
                     >
-                      <IconRefresh /> Re-aplicar desde Monday
+                      <IconRefresh /> Re-aplicar
                     </button>
                   )}
                 </div>
 
                 {variables.map(varName => {
-                  const isAuto = !!(mondayCols.length > 0 && fieldValues[varName])
+                  const savedMap    = loadSavedMapping()
+                  const mappedColId = savedMap[varName]
+                  const isAutoFilled = !!(fieldValues[varName])
+
                   return (
                     <div key={varName} className="form-group">
                       <div className="field-label-row">
                         <div className="field-label-left">
-                          {varName}
-                          {isAuto && <span className="auto-badge">auto</span>}
+                          <span className="form-label" style={{ marginBottom: 0 }}>{varName}</span>
+                          {isAutoFilled && <span className="auto-badge">✓</span>}
                         </div>
                         {mondayCols.length > 0 && (
                           <select
                             className="col-picker-select"
-                            value=""
+                            value={mappedColId ?? ''}
                             onChange={e => {
-                              if (e.target.value) {
-                                setFieldValues(prev => ({ ...prev, [varName]: e.target.value }))
-                              }
+                              const colId = e.target.value
+                              saveMapping(varName, colId)
+                              const col = mondayCols.find(c => c.id === colId)
+                              if (col?.text) setFieldValues(prev => ({ ...prev, [varName]: col.text }))
                             }}
+                            title="Selecciona la columna de Monday que corresponde a este campo — se guarda para futuros documentos"
                           >
-                            <option value="">← columna Monday</option>
+                            <option value="">— columna de Monday —</option>
                             {mondayCols.map(col => (
-                              <option key={col.id} value={col.text}>
-                                {col.title}: {col.text.slice(0, 30)}
+                              <option key={col.id} value={col.id}>
+                                {col.title}{col.text ? `: ${col.text.slice(0, 22)}` : ''}
                               </option>
                             ))}
                           </select>
                         )}
                       </div>
                       <input
-                        className={`form-input${isAuto ? ' auto-filled' : ''}`}
+                        className={`form-input${isAutoFilled ? ' auto-filled' : ''}`}
                         value={fieldValues[varName] ?? ''}
                         onChange={e => setFieldValues(prev => ({ ...prev, [varName]: e.target.value }))}
-                        placeholder={`Valor para {{${varName}}}`}
+                        placeholder={mondayCols.length > 0 ? 'Selecciona columna ↑ o escribe manualmente' : `Valor para {{${varName}}}`}
                       />
                     </div>
                   )

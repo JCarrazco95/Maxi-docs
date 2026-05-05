@@ -58,9 +58,20 @@ export async function sendForSignature({ documentName, pdfUrl, signers, expireDa
     documentSource = { name: documentName, url: pdfUrl };
   }
 
+  // Campo de firma único — se coloca en la última página, parte inferior
+  // DocuSeal usa porcentajes: x/y/w/h respecto al tamaño de la página
+  const signatureField = {
+    name:     'Firma del cliente',
+    type:     'signature',
+    required: true,
+    position: { x: 5, y: 80, w: 40, h: 10, page: 1 },
+  };
+
   const template = await docusealPost('/templates/pdf', {
-    name: documentName,
+    name:      documentName,
     documents: [documentSource],
+    // Definimos explícitamente solo el campo de firma → el PDF queda de solo lectura
+    submitters: [{ name: 'First Party', fields: [signatureField] }],
   });
 
   console.log(`[DocuSeal] Template creado: ID ${template.id}`);
