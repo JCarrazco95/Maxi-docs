@@ -89,23 +89,37 @@ router.post('/migrate-dev', async (req, res) => {
     return res.json({ migrated: 0, message: 'No hay plantillas en dev para migrar' });
   }
 
-  let migrated = 0;
+  let migrated = 0, updated = 0;
   for (const tpl of devTemplates.rows) {
     const exists = await query(
       `SELECT id FROM templates WHERE name = $1 AND monday_account_id = $2`,
       [tpl.name, accountId]
     );
-    if (exists.rows.length > 0) continue; // ya existe, no duplicar
 
-    await query(
-      `INSERT INTO templates (name, description, content_html, variables, monday_user_id, monday_account_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [tpl.name, tpl.description, tpl.content_html, JSON.stringify(tpl.variables), userId, accountId]
-    );
-    migrated++;
+    if (exists.rows.length > 0) {
+      // Actualizar si ya existe (fuerza reemplazo con la versión más reciente)
+      await query(
+        `UPDATE templates
+         SET content_html = $1, description = $2, variables = $3, updated_at = NOW()
+         WHERE name = $4 AND monday_account_id = $5`,
+        [tpl.content_html, tpl.description, JSON.stringify(tpl.variables), tpl.name, accountId]
+      );
+      updated++;
+    } else {
+      await query(
+        `INSERT INTO templates (name, description, content_html, variables, monday_user_id, monday_account_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tpl.name, tpl.description, tpl.content_html, JSON.stringify(tpl.variables), userId, accountId]
+      );
+      migrated++;
+    }
   }
 
-  res.json({ migrated, message: `${migrated} plantilla(s) importada(s) a tu cuenta` });
+  res.json({
+    migrated,
+    updated,
+    message: `${migrated} nueva(s) y ${updated} actualizada(s) en tu cuenta`,
+  });
 });
 
 // DELETE /api/templates/:id

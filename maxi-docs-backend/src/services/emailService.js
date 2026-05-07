@@ -24,8 +24,9 @@ async function send({ to, subject, html }) {
 
 // ── Templates ─────────────────────────────────────────────────
 
-function signatureRequestTemplate({ signerName, documentName, signUrl, senderNote, expireDays }) {
+function signatureRequestTemplate({ signerName, documentName, signUrl, senderNote, senderName, expireDays }) {
   const expiryText = expireDays ? `Este enlace expira en ${expireDays} días.` : '';
+  const from = senderName ? `${senderName} — MAXIRent Renta Empresarial` : 'MAXIRent Renta Empresarial';
   return `
 <!DOCTYPE html>
 <html lang="es">
@@ -60,6 +61,10 @@ function signatureRequestTemplate({ signerName, documentName, signUrl, senderNot
       <div style="font-size:12px;color:#9699a6;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Documento</div>
       <div style="font-size:16px;font-weight:700;color:#323338;">${documentName}</div>
     </div>
+
+    <p style="font-size:13px;color:#676879;margin:0 0 16px;">
+      Te envía esta propuesta: <strong style="color:#1B3055;">${from}</strong>
+    </p>
 
     ${senderNote ? `
     <div style="background:#fff8e6;border-left:3px solid #f5a623;padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:24px;">
@@ -134,12 +139,12 @@ function buildPortalUrl(signatureId, signUrl) {
   return signUrl;
 }
 
-export async function sendSignatureRequest({ signatureId, signerName, signerEmail, documentName, signUrl, senderNote, expireDays }) {
+export async function sendSignatureRequest({ signatureId, signerName, signerEmail, documentName, signUrl, senderNote, senderName, expireDays }) {
   const portalUrl = buildPortalUrl(signatureId, signUrl);
   await send({
     to:      signerEmail,
     subject: `✍️ Documento para firma: ${documentName}`,
-    html:    signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, expireDays }),
+    html:    signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, senderName, expireDays }),
   });
 }
 

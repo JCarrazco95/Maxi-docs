@@ -146,7 +146,8 @@ function VarPicker({ onInsert }) {
 
 // ── Editor principal ──────────────────────────────────────────
 export default function WysiwygEditor({ value, onChange }) {
-  const [showHtml, setShowHtml] = useState(false)
+  const [showHtml, setShowHtml]         = useState(false)
+  const [ptPickerOpen, setPtPickerOpen] = useState(false)
 
   const editor = useEditor({
     extensions: [
@@ -210,16 +211,35 @@ export default function WysiwygEditor({ value, onChange }) {
         <Sep />
         <ImagePicker onInsert={insertImage} />
         <Sep />
-        {/* Tabla de precios interactiva */}
-        <Btn
-          onClick={() => {
-            const t = window.prompt('Título de la tabla de precios:', 'COTIZACIÓN RENTA')
-            if (t !== null) editor.chain().focus().insertPricingTable({ title: t || 'COTIZACIÓN RENTA' }).run()
-          }}
-          title="Insertar tabla de precios (catálogo)"
-        >
-          <PriceIc /> Tabla precios
-        </Btn>
+        {/* Tabla de precios interactiva — picker de tipo */}
+        <div style={{ position: 'relative' }}>
+          <Btn onClick={() => setPtPickerOpen(v => !v)} title="Insertar tabla de precios">
+            <PriceIc /> Tabla precios
+          </Btn>
+          {ptPickerOpen && (
+            <div className="pt-type-picker">
+              {[
+                { type: 'renta',      icon: '🚗', label: 'Renta',      desc: 'Tarifa diaria · Mensual · Deducible · Días' },
+                { type: 'traslados',  icon: '🔄', label: 'Traslados',  desc: 'Traslado · Entrega · Recolección' },
+                { type: 'accesorios', icon: '🔧', label: 'Accesorios', desc: 'Accesorio / Servicio · Subtotal' },
+                { type: 'generic',    icon: '📋', label: 'Genérico',   desc: 'SKU · Precio/mes · Subtotal' },
+              ].map(opt => (
+                <button key={opt.type} className="pt-type-picker-item"
+                  type="button"
+                  onClick={() => {
+                    editor.chain().focus().insertPricingTable({ tableType: opt.type }).run()
+                    setPtPickerOpen(false)
+                  }}>
+                  <span className="pt-type-picker-icon">{opt.icon}</span>
+                  <div>
+                    <div className="pt-type-picker-label">{opt.label}</div>
+                    <div className="pt-type-picker-desc">{opt.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <Sep />
         <VarPicker onInsert={insertVar} />
         <Sep />

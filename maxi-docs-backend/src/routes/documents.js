@@ -171,37 +171,52 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/documents/generate — genera un documento desde una plantilla + datos del item
+// Acepta dos modos:
+//   a) Clásico: template_id + filled_data → el backend llena las variables
+//   b) Editor:  content_html             → HTML ya editado en el editor del cliente
 router.post('/generate', async (req, res) => {
-  const { accountId, userId } = req.mondayContext;  // userId se guarda en el documento
+  const { accountId, userId } = req.mondayContext;
   const {
     template_id,
     name,
     monday_board_id,
     monday_item_id,
-    filled_data = {},         // { nombre: 'Juan', empresa: 'Acme', ... }
-    catalog_items = [],       // [{ name, sku, price, quantity }]
-    catalog_iva = 16,         // % de IVA para la tabla de precios
+    filled_data = {},
+    catalog_items = [],
+    catalog_iva = 16,
+    content_html,             // NUEVO: HTML pre-llenado desde el editor en vivo
   } = req.body;
 
-  if (!template_id || !name) {
-    return res.status(400).json({ error: 'template_id y name son requeridos' });
+  if (!name) {
+    return res.status(400).json({ error: 'name es requerido' });
+  }
+  if (!template_id && !content_html) {
+    return res.status(400).json({ error: 'Se requiere template_id o content_html' });
   }
 
-  // 1. Obtener la plantilla
-  const templateResult = await query(
-    `SELECT * FROM templates WHERE id = $1 AND monday_account_id = $2`,
-    [template_id, accountId]
-  );
-  const template = templateResult.rows[0];
-  if (!template) return res.status(404).json({ error: 'Template not found' });
+  let filledHtml;
 
-  // 2. Reemplazar variables en el HTML
-  // Si hay items del catálogo, generar tabla de precios y agregarla a filled_data
-  const enrichedData = { ...filled_data };
-  if (catalog_items.length > 0) {
-    enrichedData.tabla_renta = buildPricingTableHtml(catalog_items, catalog_iva);
+  if (content_html) {
+    // Modo editor: el HTML ya viene con variables reemplazadas desde el cliente.
+    // fillTemplate solo procesará los nodos <pricing-table> y cualquier {{variable}}
+    // que el usuario haya dejado sin llenar (se blanquea).
+    filledHtml = fillTemplate(content_html, filled_data);
+  } else {
+    // Modo clásico: cargar plantilla y reemplazar variables en el backend
+    const templateResult = await query(
+      `SELECT * FROM templates WHERE id = $1 AND monday_account_id = $2`,
+      [template_id, accountId]
+    );
+    const template = templateResult.rows[0];
+    if (!template) return res.status(404).json({ error: 'Template not found' });
+
+    const enrichedData = { ...filled_data };
+    if (catalog_items.length > 0) {
+      enrichedData.tabla_renta = buildPricingTableHtml(catalog_items, catalog_iva);
+    }
+    filledHtml = fillTemplate(template.content_html, enrichedData);
   }
-  const filledHtml = fillTemplate(template.content_html, enrichedData);
+
   const fullHtml = wrapDocumentHtml(filledHtml, name);
 
   // 3. Generar PDF con Puppeteer
@@ -212,15 +227,19 @@ router.post('/generate', async (req, res) => {
   const pdfKey = buildPdfKey(documentId);
   const pdfUrl = await uploadPdf(pdfKey, pdfBuffer);
 
-  // 5. Guardar documento en la base de datos
+  // 5. Generar folio único: MR-{AÑO}-{NNNN}
+  const seqRow = await query(`SELECT nextval('doc_number_seq') AS n`);
+  const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
+
+  // 6. Guardar documento en la base de datos
   const result = await query(
     `INSERT INTO documents
-       (id, template_id, name, monday_board_id, monday_item_id, monday_account_id,
+       (id, template_id, name, doc_number, monday_board_id, monday_item_id, monday_account_id,
         monday_user_id, filled_data, content_html, pdf_url, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft')
      RETURNING *`,
     [
-      documentId, template_id, name,
+      documentId, template_id, name, docNumber,
       monday_board_id, monday_item_id, accountId,
       userId, JSON.stringify(filled_data), filledHtml, pdfUrl,
     ]

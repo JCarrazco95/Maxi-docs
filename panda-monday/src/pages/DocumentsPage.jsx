@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../api/client.js'
 import DocumentGeneratorModal from './components/DocumentGeneratorModal.jsx'
-import SignatureModal from './components/SignatureModal.jsx'
+import FieldConfiguratorModal from './components/FieldConfiguratorModal.jsx'
 import SignatureStatusPanel from './components/SignatureStatusPanel.jsx'
 
 const STATUS_LABELS = {
@@ -14,7 +14,7 @@ const STATUS_LABELS = {
 function resolvePdfUrl(url) {
   if (!url) return null
   if (url.startsWith('http://localhost:3001')) {
-    return url.replace('http://localhost:3001', window.location.origin)
+    return url.replace('http://localhost:3001', '')
   }
   return url
 }
@@ -383,7 +383,7 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
       )}
 
       {signModalDoc && (
-        <SignatureModal
+        <FieldConfiguratorModal
           document={signModalDoc}
           itemId={itemId}
           onClose={() => setSignModalDoc(null)}

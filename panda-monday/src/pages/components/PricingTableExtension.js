@@ -2,29 +2,30 @@ import { Node } from '@tiptap/core'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import PricingTableView from './PricingTableView.jsx'
 
-// ── Helpers de codificación ────────────────────────────────────
-// Base64 seguro con Unicode para almacenar JSON en atributos HTML
+// ── Codificación Base64 Unicode-safe ───────────────────────────
 export function encodeItems(items) {
-  try {
-    return btoa(unescape(encodeURIComponent(JSON.stringify(items ?? []))))
-  } catch {
-    return btoa('[]')
-  }
+  try { return btoa(unescape(encodeURIComponent(JSON.stringify(items ?? [])))) }
+  catch { return btoa('[]') }
 }
 
 export function decodeItems(b64) {
-  try {
-    return JSON.parse(decodeURIComponent(escape(atob(b64 ?? btoa('[]')))))
-  } catch {
-    return []
-  }
+  try { return JSON.parse(decodeURIComponent(escape(atob(b64 ?? btoa('[]'))))) }
+  catch { return [] }
+}
+
+// Títulos por defecto según tipo de tabla
+export const TABLE_TYPE_DEFAULTS = {
+  renta:      { title: 'COTIZACIÓN RENTA',      label: 'Renta' },
+  traslados:  { title: 'COTIZACIÓN TRASLADOS',  label: 'Traslados' },
+  accesorios: { title: 'COTIZACIÓN ACCESORIOS', label: 'Accesorios' },
+  generic:    { title: 'COTIZACIÓN',            label: 'Genérico' },
 }
 
 // ── Nodo TipTap: pricing-table ─────────────────────────────────
 export const PricingTable = Node.create({
   name:       'pricingTable',
   group:      'block',
-  atom:       true,      // bloque indivisible (como una imagen)
+  atom:       true,
   selectable: true,
   draggable:  true,
 
@@ -42,19 +43,21 @@ export const PricingTable = Node.create({
         default:   16,
         parseHTML: el => Number(el.getAttribute('data-iva') ?? 16),
       },
+      tableType: {
+        default:   'renta',
+        parseHTML: el => el.getAttribute('data-table-type') ?? 'renta',
+      },
     }
   },
 
-  parseHTML() {
-    return [{ tag: 'pricing-table' }]
-  },
+  parseHTML() { return [{ tag: 'pricing-table' }] },
 
   renderHTML({ node }) {
-    // Serializa el nodo a HTML para guardarlo en la BD y enviarlo al backend
     return ['pricing-table', {
       'data-title':      node.attrs.title,
       'data-items-b64':  node.attrs.itemsB64,
       'data-iva':        String(node.attrs.ivaRate),
+      'data-table-type': node.attrs.tableType,
     }]
   },
 
@@ -65,12 +68,15 @@ export const PricingTable = Node.create({
   addCommands() {
     return {
       insertPricingTable: (attrs = {}) => ({ commands }) => {
+        const type = attrs.tableType ?? 'renta'
+        const defaultTitle = TABLE_TYPE_DEFAULTS[type]?.title ?? 'COTIZACIÓN'
         return commands.insertContent({
           type: this.name,
           attrs: {
-            title:     attrs.title ?? 'COTIZACIÓN RENTA',
+            title:     attrs.title ?? defaultTitle,
             itemsB64:  encodeItems([]),
             ivaRate:   16,
+            tableType: type,
           },
         })
       },

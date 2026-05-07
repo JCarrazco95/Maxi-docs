@@ -1,15 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import api from '../api/client.js'
 
 function resolvePdfUrl(url) {
   if (!url) return null
-  if (url.startsWith('http://localhost:3001')) return url.replace('http://localhost:3001', window.location.origin)
+  if (url.startsWith('http://localhost:3001')) return url.replace('http://localhost:3001', '')
   return url
 }
 
-// ── Vistas ────────────────────────────────────────────────────
-
+// ── Header ────────────────────────────────────────────────────
 function PortalHeader() {
   return (
     <header className="portal-header">
@@ -17,11 +16,12 @@ function PortalHeader() {
         <div className="portal-logo-icon">M</div>
         <span className="portal-logo-text">Maxi<span>Docs</span></span>
       </div>
-      <span className="portal-logo-sub">Gestión de documentos · MAXIRent</span>
+      <span className="portal-logo-sub">Firma Electrónica · MAXIRent Renta Empresarial</span>
     </header>
   )
 }
 
+// ── Ya firmado ─────────────────────────────────────────────────
 function PortalSigned({ data }) {
   const pdfUrl = resolvePdfUrl(data.document.pdf_url)
   return (
@@ -42,138 +42,253 @@ function PortalSigned({ data }) {
           </a>
         )}
         <p className="portal-success-note">
-          Recibirás una copia por email. Puedes cerrar esta ventana.
+          Puedes cerrar esta ventana.
         </p>
       </div>
     </div>
   )
 }
 
-function PortalPending({ data }) {
-  const [view, setView] = useState('sign') // 'sign' | 'preview'
-  const pdfUrl  = resolvePdfUrl(data.document.pdf_url)
-  const signUrl = data.signature.sign_url
+// ── Canvas de firma ────────────────────────────────────────────
+function SignatureCanvas({ onSigned }) {
+  const canvasRef = useRef(null)
+  const isDrawing = useRef(false)
+  const [hasSignature, setHasSignature] = useState(false)
+
+  function getPos(e, canvas) {
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width  / rect.width
+    const scaleY = canvas.height / rect.height
+    if (e.touches) {
+      return {
+        x: (e.touches[0].clientX - rect.left) * scaleX,
+        y: (e.touches[0].clientY - rect.top)  * scaleY,
+      }
+    }
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top)  * scaleY,
+    }
+  }
+
+  function startDraw(e) {
+    e.preventDefault()
+    const canvas = canvasRef.current
+    const ctx    = canvas.getContext('2d')
+    const { x, y } = getPos(e, canvas)
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    isDrawing.current = true
+  }
+
+  function draw(e) {
+    if (!isDrawing.current) return
+    e.preventDefault()
+    const canvas = canvasRef.current
+    const ctx    = canvas.getContext('2d')
+    const { x, y } = getPos(e, canvas)
+    ctx.lineTo(x, y)
+    ctx.strokeStyle = '#1B3055'
+    ctx.lineWidth   = 2.5
+    ctx.lineCap     = 'round'
+    ctx.lineJoin    = 'round'
+    ctx.stroke()
+    setHasSignature(true)
+  }
+
+  function endDraw() { isDrawing.current = false }
+
+  function clear() {
+    const canvas = canvasRef.current
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+    setHasSignature(false)
+  }
+
+  function confirm() {
+    const canvas = canvasRef.current
+    onSigned(canvas.toDataURL('image/png'))
+  }
 
   return (
-    <div className="portal-body portal-body-wide">
-      {/* Info del documento */}
-      <div className="portal-doc-info">
-        <div className="portal-doc-icon">📄</div>
-        <div>
-          <div className="portal-doc-name">{data.document.name}</div>
-          <div className="portal-doc-signer">
-            Para: <strong>{data.signature.signer_name}</strong>
-            <span className="portal-signer-email">({data.signature.signer_email})</span>
-          </div>
-        </div>
-        <span className="portal-badge-pending">Pendiente de firma</span>
+    <div className="portal-sig-wrap">
+      <div className="portal-sig-label">
+        Dibuja tu firma dentro del recuadro:
       </div>
-
-      {/* Tabs */}
-      <div className="portal-tabs">
-        <button
-          className={`portal-tab ${view === 'sign' ? 'active' : ''}`}
-          onClick={() => setView('sign')}
-        >
-          ✍️ Firmar documento
+      <div className="portal-sig-canvas-wrap">
+        <canvas
+          ref={canvasRef}
+          width={600}
+          height={180}
+          className="portal-sig-canvas"
+          onMouseDown={startDraw}
+          onMouseMove={draw}
+          onMouseUp={endDraw}
+          onMouseLeave={endDraw}
+          onTouchStart={startDraw}
+          onTouchMove={draw}
+          onTouchEnd={endDraw}
+        />
+        {!hasSignature && (
+          <div className="portal-sig-placeholder">Firma aquí</div>
+        )}
+      </div>
+      <div className="portal-sig-actions">
+        <button type="button" className="portal-btn-outline" onClick={clear}>
+          Limpiar
         </button>
-        {pdfUrl && (
-          <button
-            className={`portal-tab ${view === 'preview' ? 'active' : ''}`}
-            onClick={() => setView('preview')}
-          >
-            👁 Vista previa
-          </button>
-        )}
-      </div>
-
-      {/* Contenido */}
-      <div className="portal-content">
-        {view === 'sign' && signUrl && (
-          <div className="portal-sign-wrap">
-            <iframe
-              src={signUrl}
-              className="portal-sign-frame"
-              title="Firma tu documento"
-              allow="camera"
-            />
-            <div className="portal-sign-fallback">
-              <p>¿El formulario no carga?</p>
-              <a href={signUrl} target="_blank" rel="noreferrer" className="portal-btn portal-btn-primary">
-                Abrir en pantalla completa ↗
-              </a>
-            </div>
-          </div>
-        )}
-
-        {view === 'preview' && pdfUrl && (
-          <div className="portal-preview-wrap">
-            <iframe
-              src={pdfUrl}
-              className="portal-preview-frame"
-              title="Vista previa del documento"
-            />
-          </div>
-        )}
+        <button
+          type="button"
+          className="portal-btn portal-btn-primary"
+          onClick={confirm}
+          disabled={!hasSignature}
+        >
+          ✍️ Confirmar firma
+        </button>
       </div>
     </div>
   )
 }
 
-function PortalNotFound() {
+// ── Vista principal de firma ────────────────────────────────────
+function PortalSign({ data, onSigned }) {
+  const [activeTab, setActiveTab] = useState('sign') // 'sign' | 'preview'
+  const [signing, setSigning]    = useState(false)
+  const [error, setError]        = useState(null)
+  const pdfUrl = resolvePdfUrl(data.document.pdf_url)
+
+  async function handleSigned(signatureDataUrl) {
+    setSigning(true)
+    setError(null)
+    try {
+      const signerIp = await fetch('https://api.ipify.org?format=json')
+        .then(r => r.json()).then(d => d.ip).catch(() => '')
+
+      await api.post(`/api/signatures/${data.signature.id}/sign`, {
+        signatureDataUrl,
+        signerIp,
+      })
+      onSigned()
+    } catch (e) {
+      setError(e.response?.data?.error || 'Error al registrar la firma')
+      setSigning(false)
+    }
+  }
+
   return (
     <div className="portal-body">
-      <div className="portal-error-card">
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-        <h2>Firma no encontrada</h2>
-        <p>El enlace puede haber expirado o ser inválido.</p>
+      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+        {/* Info del documento */}
+        <div className="portal-doc-info" style={{ marginBottom: 20 }}>
+          <div className="portal-doc-chip">
+            <span className="portal-doc-chip-label">Propuesta para</span>
+            <span className="portal-doc-chip-name">{data.signature.signer_name}</span>
+          </div>
+          <span className="portal-badge-pending">Pendiente de firma</span>
+        </div>
+
+        {/* Tabs */}
+        <div className="portal-tabs">
+          <button className={`portal-tab ${activeTab==='sign' ? 'active' : ''}`}
+            onClick={() => setActiveTab('sign')}>✍️ Firmar</button>
+          <button className={`portal-tab ${activeTab==='preview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('preview')}>📄 Ver documento</button>
+        </div>
+
+        <div className="portal-content">
+          {activeTab === 'sign' ? (
+            <div className="portal-sign-wrap" style={{ padding: 24 }}>
+              <p style={{ fontSize: 14, color: '#555', marginBottom: 20, lineHeight: 1.6 }}>
+                Al firmar, aceptas los términos y condiciones de la propuesta comercial de
+                <strong> MAXIRent Renta Empresarial</strong>. Tu firma tiene validez legal
+                conforme al CCOM de México.
+              </p>
+
+              {error && (
+                <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '10px 14px', color: '#dc2626', marginBottom: 16, fontSize: 13 }}>
+                  ⚠️ {error}
+                </div>
+              )}
+
+              {signing ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+                  <p>Registrando firma y generando PDF firmado…</p>
+                </div>
+              ) : (
+                <SignatureCanvas onSigned={handleSigned} />
+              )}
+            </div>
+          ) : (
+            <div className="portal-preview-wrap">
+              {pdfUrl ? (
+                <iframe
+                  src={pdfUrl}
+                  className="portal-preview-frame"
+                  title="Vista previa del documento"
+                />
+              ) : (
+                <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
+                  PDF no disponible
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 16 }}>
+          Firma segura generada por MaxiDocs · {new Date().getFullYear()}
+        </p>
       </div>
     </div>
   )
 }
 
-// ── Página principal ──────────────────────────────────────────
-
+// ── Componente principal ───────────────────────────────────────
 export default function PortalPage() {
   const { signatureId } = useParams()
-  const [data, setData]       = useState(null)
+  const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
+  const [signed, setSigned]   = useState(false)
+  const [error, setError]     = useState(null)
 
   useEffect(() => {
     api.get(`/api/portal/${signatureId}`)
-      .then(res => setData(res.data))
-      .catch(err => {
-        if (err.response?.status === 404) setNotFound(true)
+      .then(res => {
+        setData(res.data)
+        if (res.data.signature.status === 'signed') setSigned(true)
       })
+      .catch(() => setError('No se encontró el enlace de firma'))
       .finally(() => setLoading(false))
   }, [signatureId])
 
-  return (
-    <div className="portal-root">
+  if (loading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="spinner" />
+    </div>
+  )
+
+  if (error) return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <PortalHeader />
-
-      {loading && (
-        <div className="portal-loading">
-          <div className="spinner" />
-          <span>Cargando documento…</span>
+      <div className="portal-body">
+        <div className="portal-error-card">
+          <h2>Enlace no válido</h2>
+          <p>Este enlace de firma no existe o ha expirado.</p>
         </div>
-      )}
+      </div>
+    </div>
+  )
 
-      {!loading && notFound && <PortalNotFound />}
-
-      {!loading && data && (
-        data.signature.status === 'signed'
-          ? <PortalSigned  data={data} />
-          : <PortalPending data={data} />
-      )}
-
-      <footer className="portal-footer">
-        <p>Powered by MaxiDocs · MAXIRent Renta Empresarial</p>
-        <p style={{ marginTop: 4, fontSize: 11 }}>
-          maxirentempresas.com.mx
-        </p>
-      </footer>
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f6f7fb' }}>
+      <PortalHeader />
+      {(signed || data?.signature?.status === 'signed')
+        ? <PortalSigned data={data} />
+        : <PortalSign data={data} onSigned={() => setSigned(true)} />
+      }
+      <div className="portal-footer">
+        Firma Electrónica · MaxiDocs · Válido en México (CCOM Art. 89-90)
+      </div>
     </div>
   )
 }

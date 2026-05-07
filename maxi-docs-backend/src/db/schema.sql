@@ -33,8 +33,12 @@ CREATE TABLE IF NOT EXISTS documents (
   updated_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Agregar columna si ya existe la tabla (re-ejecuciones seguras)
+-- Agregar columnas si ya existe la tabla (re-ejecuciones seguras)
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS monday_user_id VARCHAR(100);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_number VARCHAR(50);
+
+-- Secuencia para folio único por cuenta
+CREATE SEQUENCE IF NOT EXISTS doc_number_seq START 1 INCREMENT 1;
 
 -- Firmas asociadas a documentos
 CREATE TABLE IF NOT EXISTS signatures (

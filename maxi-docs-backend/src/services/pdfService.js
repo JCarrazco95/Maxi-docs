@@ -12,11 +12,13 @@ function processPricingTableNodes(html) {
         const b64M   = attrs.match(/data-items-b64="([^"]*)"/)
         const ivaM   = attrs.match(/data-iva="([^"]*)"/)
 
-        const title = titleM?.[1] ?? 'Cotización'
-        const items = b64M
+        const title     = titleM?.[1] ?? 'Cotización'
+        const typeM     = attrs.match(/data-table-type="([^"]*)"/)
+        const tableType = typeM?.[1] ?? 'renta'
+        const items     = b64M
           ? JSON.parse(Buffer.from(b64M[1], 'base64').toString('utf8'))
           : []
-        const iva   = Number(ivaM?.[1] ?? 16)
+        const iva = Number(ivaM?.[1] ?? 16)
 
         if (!items?.length) return ''
 
@@ -24,7 +26,7 @@ function processPricingTableNodes(html) {
           <div style="font-weight:bold;font-size:11pt;margin-bottom:8px;color:#1B3055;">
             ${title.toUpperCase()}
           </div>
-          ${buildPricingTableHtml(items, iva)}
+          ${buildPricingTableHtml(items, iva, tableType)}
         </div>`
       } catch {
         return ''
@@ -102,16 +104,16 @@ export function wrapDocumentHtml(contentHtml, title = 'Documento') {
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-          font-family: 'Georgia', 'Times New Roman', serif;
-          font-size: 12pt;
-          line-height: 1.6;
-          color: #1a1a1a;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 10pt;
+          color: #222;
           background: white;
         }
+        /* El template define su propio layout — no restringir el ancho */
         .document-body {
-          max-width: 170mm;
-          margin: 0 auto;
-          padding: 10mm 0;
+          max-width: 100%;
+          margin: 0;
+          padding: 0;
         }
         h1 { font-size: 18pt; margin-bottom: 16px; }
         h2 { font-size: 14pt; margin: 20px 0 10px; }

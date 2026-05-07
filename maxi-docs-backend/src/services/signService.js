@@ -43,7 +43,7 @@ function pdfToBase64(pdfUrl) {
  * Envía un documento a DocuSeal para firma electrónica.
  * Flujo: 1) crear plantilla desde PDF  2) crear envío con firmantes
  */
-export async function sendForSignature({ documentName, pdfUrl, signers, expireDays = null }) {
+export async function sendForSignature({ documentName, pdfUrl, signers, expireDays = null, fieldConfig = null }) {
   if (!API_KEY || API_KEY === 'tu_api_key') {
     const err = new Error('DocuSeal no está configurado. Agrega DOCUSEAL_API_KEY en el .env del backend.');
     err.status = 503;
@@ -58,36 +58,67 @@ export async function sendForSignature({ documentName, pdfUrl, signers, expireDa
     documentSource = { name: documentName, url: pdfUrl };
   }
 
-  // Campo de firma único en la primera página, en el bloque de firmas de la propuesta
-  // Coordenadas en porcentaje del tamaño de la página (A4)
-  // x=5%  → margen izquierdo
-  // y=77% → ~77% desde arriba (zona de firma "Nombre y firma del cliente")
-  // w=38% → ancho del bloque izquierdo
-  // h=9%  → altura del campo
-  // Para ajustar: modifica SIGNATURE_X, SIGNATURE_Y en .env o edita aquí directamente
-  const SIG_X = Number(process.env.SIGNATURE_X ?? 5);
-  const SIG_Y = Number(process.env.SIGNATURE_Y ?? 77);
-  const SIG_W = Number(process.env.SIGNATURE_W ?? 38);
-  const SIG_H = Number(process.env.SIGNATURE_H ?? 9);
-  const SIG_P = Number(process.env.SIGNATURE_PAGE ?? 1);
+  // Construir los campos del template
+  // NOTA: siempre usamos UN solo rol 'First Party' — es el formato que DocuSeal acepta
+  // Los campos con posición personalizada del usuario reemplazan a los del .env
+  // DocuSeal acepta dos formatos de posición:
+  //   position: { x, y, w, h, page }  → valores en % (0-100)
+  //   areas:   [{ x, y, w, h, page }] → valores como fracción (0-1)
+  // Usamos 'areas' para campos personalizados y 'position' para el default
 
-  const signatureField = {
-    name:     'Firma del cliente',
-    type:     'signature',
-    required: true,
-    position: { x: SIG_X, y: SIG_Y, w: SIG_W, h: SIG_H, page: SIG_P },
-  };
+  let templateFields;
 
-  const template = await docusealPost('/templates/pdf', {
-    name:      documentName,
-    documents: [documentSource],
-    // Definimos explícitamente solo el campo de firma → el PDF queda de solo lectura
-    submitters: [{ name: 'First Party', fields: [signatureField] }],
-  });
+  if (fieldConfig && fieldConfig.length > 0) {
+    // Campos configurados por el usuario — formato 'areas' (0-1)
+    templateFields = fieldConfig.map((f, i) => ({
+      name:     `${f.type}_${i + 1}`,
+      type:     f.type,
+      required: true,
+      areas: [{
+        x:    f.x / 100,
+        y:    f.y / 100,
+        w:    f.w / 100,
+        h:    f.h / 100,
+        page: f.page ?? 1,
+      }],
+    }));
+    console.log(`[DocuSeal] Campos personalizados: ${templateFields.length}`,
+      templateFields.map(f => `${f.name}@(${f.areas[0].x.toFixed(2)},${f.areas[0].y.toFixed(2)})`).join(' '));
+  } else {
+    // Default: firma en posición del .env — formato 'position' (0-100)
+    templateFields = [{
+      name:     'Firma del cliente',
+      type:     'signature',
+      required: true,
+      position: {
+        x:    Number(process.env.SIGNATURE_X    ?? 5),
+        y:    Number(process.env.SIGNATURE_Y    ?? 77),
+        w:    Number(process.env.SIGNATURE_W    ?? 38),
+        h:    Number(process.env.SIGNATURE_H    ?? 9),
+        page: Number(process.env.SIGNATURE_PAGE ?? 1),
+      },
+    }];
+  }
 
-  console.log(`[DocuSeal] Template creado: ID ${template.id}`);
+  const submitterTemplates = [{ name: 'First Party', fields: templateFields }];
 
-  // 2. Crear el envío con todos los firmantes
+  let template;
+  try {
+    template = await docusealPost('/templates/pdf', {
+      name:       documentName,
+      documents:  [documentSource],
+      submitters: submitterTemplates,
+    });
+  } catch (err) {
+    // Si falla con campos personalizados, reintentar con la firma por defecto
+    console.warn('[DocuSeal] Reintentando con firma por defecto:', err.message);
+    const fallback = [{ name: 'First Party', fields: [{ name: 'Firma del cliente', type: 'signature', required: true, position: { x: Number(process.env.SIGNATURE_X??5), y: Number(process.env.SIGNATURE_Y??77), w: Number(process.env.SIGNATURE_W??38), h: Number(process.env.SIGNATURE_H??9), page: Number(process.env.SIGNATURE_PAGE??1) } }] }];
+    template = await docusealPost('/templates/pdf', { name: documentName, documents: [documentSource], submitters: fallback });
+  }
+
+  console.log(`[DocuSeal] Template creado: ID ${template.id}, roles: ${submitterTemplates.map(s => s.name).join(', ')}`);
+
+  // 2. Crear el envío — mapear cada firmante a su rol por índice
   const expireAt = expireDays
     ? new Date(Date.now() + expireDays * 86_400_000).toISOString()
     : undefined;
@@ -97,7 +128,7 @@ export async function sendForSignature({ documentName, pdfUrl, signers, expireDa
     send_email:  true,
     ...(expireAt ? { expire_at: expireAt } : {}),
     submitters: signers.map(s => ({
-      role:  template.submitters?.[0]?.name ?? 'First Party',
+      role:  'First Party',
       email: s.email,
       name:  s.name,
     })),

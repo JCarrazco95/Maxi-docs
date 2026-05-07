@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db/connection.js';
-import { sendForSignature } from '../services/signService.js';
 import { sendSignatureRequest, sendSignedNotification } from '../services/emailService.js';
+import { embedSignaturesInPdf, saveSignedPdf } from '../services/selfSignService.js';
 
 const router = Router();
 
@@ -21,10 +21,10 @@ async function callOutgoingWebhook(event, payload) {
   }
 }
 
-// POST /api/signatures/send — envía un documento a firma via DocuSeal + email personalizado
+// POST /api/signatures/send — envía a firma SIN DocuSeal (plataforma propia)
 router.post('/send', async (req, res) => {
   const { accountId } = req.mondayContext;
-  const { document_id, signers, expire_days, sender_note } = req.body;
+  const { document_id, signers, expire_days, sender_note, sender_name, field_config } = req.body;
 
   if (!document_id || !signers?.length) {
     return res.status(400).json({ error: 'document_id y signers son requeridos' });
@@ -38,55 +38,139 @@ router.post('/send', async (req, res) => {
   if (!document) return res.status(404).json({ error: 'Documento no encontrado' });
   if (!document.pdf_url) return res.status(400).json({ error: 'El documento no tiene PDF generado' });
 
-  if (!process.env.DOCUSEAL_API_KEY || process.env.DOCUSEAL_API_KEY === 'tu_api_key') {
-    const err = new Error('DocuSeal no está configurado. Agrega DOCUSEAL_API_KEY en el .env del backend.');
-    err.status = 503;
-    throw err;
-  }
-
-  const { opensignDocumentId, signUrls } = await sendForSignature({
-    documentName: document.name,
-    pdfUrl:       document.pdf_url,
-    signers,
-    expireDays:   expire_days ? Number(expire_days) : null,
-  });
-
   const insertedSignatures = [];
+  const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:8301';
+
   for (const signer of signers) {
-    const signUrl = signUrls.find(s => s.email === signer.email)?.signUrl ?? '';
+    // Crear registro de firma con token único y field_config para posicionar la firma
     const result = await query(
       `INSERT INTO signatures
-         (document_id, signer_name, signer_email, status, opensign_document_id, sign_url)
-       VALUES ($1, $2, $3, 'pending', $4, $5)
+         (document_id, signer_name, signer_email, status, sign_url, opensign_document_id)
+       VALUES ($1, $2, $3, 'pending', '', '')
        RETURNING *`,
-      [document_id, signer.name, signer.email, opensignDocumentId, signUrl]
+      [document_id, signer.name, signer.email]
     );
-    insertedSignatures.push(result.rows[0]);
+    const sig = result.rows[0];
 
-    // Email personalizado de MaxiDocs con link al portal del firmante
-    const insertedSig = result.rows[0];
-    if (signUrl) {
-      sendSignatureRequest({
-        signatureId:  insertedSig.id,
-        signerName:   signer.name,
-        signerEmail:  signer.email,
-        documentName: document.name,
-        signUrl,
-        senderNote:   sender_note ?? null,
-        expireDays:   expire_days ? Number(expire_days) : null,
-      }).catch(err => console.error('[Email] Error:', err.message));
+    // Guardar field_config en la firma para usar al embeber la imagen
+    if (field_config) {
+      await query(
+        `UPDATE signatures SET opensign_document_id = $1 WHERE id = $2`,
+        [JSON.stringify(field_config), sig.id]
+      );
     }
+
+    // URL del portal de firma propio
+    const signUrl = `${PUBLIC_URL}/sign/${sig.id}`;
+    await query(`UPDATE signatures SET sign_url = $1 WHERE id = $2`, [signUrl, sig.id]);
+
+    insertedSignatures.push({ ...sig, sign_url: signUrl });
+
+    // Email personalizado con link al portal
+    sendSignatureRequest({
+      signatureId:  sig.id,
+      signerName:   signer.name,
+      signerEmail:  signer.email,
+      documentName: document.name,
+      signUrl,
+      senderNote:   sender_note ?? null,
+      senderName:   sender_name ?? null,
+      expireDays:   expire_days ? Number(expire_days) : null,
+    }).catch(err => console.error('[Email] Error:', err.message));
   }
 
   await query(`UPDATE documents SET status = 'sent' WHERE id = $1`, [document_id]);
 
-  // Webhook saliente: documento enviado a firma
   callOutgoingWebhook('document.sent', {
     document: { id: document.id, name: document.name },
     signers:  signers.map(s => ({ name: s.name, email: s.email })),
   });
 
   res.status(201).json({ signatures: insertedSignatures });
+});
+
+// POST /api/signatures/:id/sign — el firmante envía su firma dibujada
+router.post('/:signatureId/sign', async (req, res) => {
+  const { signatureId } = req.params;
+  const { signatureDataUrl, signerIp } = req.body;
+
+  if (!signatureDataUrl) return res.status(400).json({ error: 'Se requiere la imagen de la firma' });
+
+  // Obtener registro de firma
+  const sigRes = await query(
+    `SELECT s.*, d.pdf_url, d.name AS document_name, d.id AS document_id, d.monday_account_id
+     FROM signatures s JOIN documents d ON d.id = s.document_id
+     WHERE s.id = $1`,
+    [signatureId]
+  );
+  const sig = sigRes.rows[0];
+  if (!sig) return res.status(404).json({ error: 'Firma no encontrada' });
+  if (sig.status === 'signed') return res.status(400).json({ error: 'Ya fue firmado' });
+
+  // Parsear field_config (guardado en opensign_document_id por ahora)
+  let fieldConfig = []
+  try {
+    if (sig.opensign_document_id && sig.opensign_document_id.startsWith('[')) {
+      fieldConfig = JSON.parse(sig.opensign_document_id)
+    }
+  } catch { /* sin campo configurado */ }
+
+  // Si no hay campos configurados, usar posición por defecto
+  if (!fieldConfig.length) {
+    fieldConfig = [{
+      type: 'signature',
+      x: Number(process.env.SIGNATURE_X    ?? 5),
+      y: Number(process.env.SIGNATURE_Y    ?? 77),
+      w: Number(process.env.SIGNATURE_W    ?? 38),
+      h: Number(process.env.SIGNATURE_H    ?? 9),
+      page: Number(process.env.SIGNATURE_PAGE ?? 1),
+    }]
+  }
+
+  // Embeber firma en el PDF
+  const signedBuffer = await embedSignaturesInPdf(sig.pdf_url, [{
+    name:             sig.signer_name,
+    email:            sig.signer_email,
+    signatureDataUrl,
+    ip:               signerIp || req.ip || 'N/D',
+    signedAt:         new Date().toISOString(),
+    fieldConfig,
+  }]);
+
+  // Guardar PDF firmado
+  const signedPdfUrl = saveSignedPdf(sig.pdf_url, signedBuffer);
+
+  // Actualizar firma
+  await query(
+    `UPDATE signatures SET status = 'signed', signed_at = NOW() WHERE id = $1`,
+    [signatureId]
+  );
+
+  // Actualizar URL del PDF con la versión firmada
+  await query(
+    `UPDATE documents SET pdf_url = $1, status = 'signed' WHERE id = $2`,
+    [signedPdfUrl, sig.document_id]
+  );
+
+  // Email de notificación al remitente
+  const notifyEmail = process.env.NOTIFY_EMAIL;
+  if (notifyEmail) {
+    sendSignedNotification({
+      toEmail:      notifyEmail,
+      documentName: sig.document_name,
+      pdfUrl:       signedPdfUrl,
+      signerName:   sig.signer_name,
+    }).catch(() => {});
+  }
+
+  // Webhook a Make/externos
+  callOutgoingWebhook('document.signed', {
+    document: { id: sig.document_id, name: sig.document_name, pdf_url: signedPdfUrl },
+    signer:   { name: sig.signer_name, email: sig.signer_email },
+    monday_account_id: sig.monday_account_id,
+  });
+
+  res.json({ ok: true, signedPdfUrl });
 });
 
 // GET /api/signatures/:documentId — estado detallado de firmas de un documento
