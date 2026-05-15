@@ -178,10 +178,11 @@ export function extractVariables(html) {
 export async function generatePdf(html) {
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage', // necesario en Railway/Docker
+      '--disable-dev-shm-usage',
     ],
   });
 
@@ -216,6 +217,7 @@ export async function generatePdf(html) {
 export async function generateThumbnail(html, templateId) {
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
   });
   try {
