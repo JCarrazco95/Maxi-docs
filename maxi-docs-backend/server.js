@@ -27,7 +27,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Middlewares globales ──────────────────────────────────────────
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:8301')
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:8301,https://maxi-docs.vercel.app')
   .split(',')
   .map(u => u.trim());
 
