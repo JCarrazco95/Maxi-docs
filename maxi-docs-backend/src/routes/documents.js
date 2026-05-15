@@ -1,11 +1,24 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db/connection.js';
-import { fillTemplate, generatePdf, wrapDocumentHtml } from '../services/pdfService.js';
+import { fillTemplate, generatePdf, wrapDocumentHtml, processPricingTableNodes } from '../services/pdfService.js';
 import { uploadPdf, buildPdfKey } from '../services/storageService.js';
 import { buildPricingTableHtml } from '../services/catalogService.js';
+import { requireEditor } from '../middleware/mondayAuth.js';
+import { logEvent, hashPdfFile } from '../services/auditService.js';
 
 const router = Router();
+
+// POST /api/documents/preview — renderizar HTML del documento sin generar PDF
+// Expande <pricing-table> y aplica el wrapper CSS para mostrar en iframe
+router.post('/preview', (req, res) => {
+  const { content_html, title = 'Vista previa' } = req.body;
+  if (!content_html) return res.status(400).json({ error: 'content_html requerido' });
+  const processed = processPricingTableNodes(content_html);
+  const wrapped   = wrapDocumentHtml(processed, title);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(wrapped);
+});
 
 // GET /api/documents/stats — resumen de KPIs por cuenta
 router.get('/stats', async (req, res) => {
@@ -174,7 +187,7 @@ router.get('/:id', async (req, res) => {
 // Acepta dos modos:
 //   a) Clásico: template_id + filled_data → el backend llena las variables
 //   b) Editor:  content_html             → HTML ya editado en el editor del cliente
-router.post('/generate', async (req, res) => {
+router.post('/generate', requireEditor, async (req, res) => {
   const { accountId, userId } = req.mondayContext;
   const {
     template_id,
@@ -184,7 +197,8 @@ router.post('/generate', async (req, res) => {
     filled_data = {},
     catalog_items = [],
     catalog_iva = 16,
-    content_html,             // NUEVO: HTML pre-llenado desde el editor en vivo
+    content_html,
+    owner_email,    // Email del vendedor — se usa para notificaciones de firma
   } = req.body;
 
   if (!name) {
@@ -235,21 +249,32 @@ router.post('/generate', async (req, res) => {
   const result = await query(
     `INSERT INTO documents
        (id, template_id, name, doc_number, monday_board_id, monday_item_id, monday_account_id,
-        monday_user_id, filled_data, content_html, pdf_url, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft')
+        monday_user_id, owner_email, filled_data, content_html, pdf_url, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft')
      RETURNING *`,
     [
       documentId, template_id, name, docNumber,
       monday_board_id, monday_item_id, accountId,
-      userId, JSON.stringify(filled_data), filledHtml, pdfUrl,
+      userId, owner_email || null, JSON.stringify(filled_data), filledHtml, pdfUrl,
     ]
   );
 
-  res.status(201).json(result.rows[0]);
+  const doc = result.rows[0];
+
+  // Audit: documento creado
+  logEvent({
+    documentId: doc.id,
+    action:     'document.created',
+    actor:      { id: userId },
+    pdfHash:    hashPdfFile(pdfUrl),
+    metadata:   { template_id, name, monday_item_id },
+  });
+
+  res.status(201).json(doc);
 });
 
 // DELETE /api/documents/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireEditor, async (req, res) => {
   const { accountId } = req.mondayContext;
   await query(
     `DELETE FROM documents WHERE id = $1 AND monday_account_id = $2`,

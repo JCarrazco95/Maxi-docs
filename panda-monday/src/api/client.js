@@ -8,9 +8,11 @@ export function updateMondayContext(ctx) {
   _context = {
     accountId: String(ctx.account?.id ?? ctx.accountId ?? 'dev'),
     userId:    String(ctx.user?.id    ?? ctx.userId    ?? 'dev'),
-    isAdmin:   Boolean(ctx.user?.isAdmin ?? false),
+    isAdmin:   Boolean(ctx.user?.isAdmin ?? ctx.isAdmin ?? false),
   }
 }
+
+export function getContext() { return { ..._context } }
 
 // Sin baseURL: las peticiones van al mismo origen (Vite hace proxy a localhost:3001)
 // Funciona tanto en local (http://localhost:8301) como via ngrok (https://...)

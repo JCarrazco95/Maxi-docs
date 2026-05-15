@@ -23,7 +23,15 @@ export default function CatalogPickerModal({ onClose, onConfirm, initialItems = 
 
   useEffect(() => {
     api.get('/api/catalog')
-      .then(res => { setCatalog(res.data); setLoading(false) })
+      .then(res => {
+        setCatalog(res.data)
+        setLoading(false)
+        // Abrir en la categoría con más productos por defecto
+        const cats = res.data?.categories ?? []
+        const maxIdx = cats.reduce((best, cat, i) =>
+          (cat.products?.length ?? 0) > (cats[best]?.products?.length ?? 0) ? i : best, 0)
+        setActiveTab(maxIdx)
+      })
       .catch(() => { setError('Error al cargar el catálogo'); setLoading(false) })
   }, [])
 

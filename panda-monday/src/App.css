@@ -63,6 +63,58 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* ── Drag Handle global ──────────────────────────────────────── */
+.drag-handle-btn {
+  position:        absolute;
+  display:         none;         /* visible via JS */
+  align-items:     center;
+  justify-content: center;
+  width:           20px;
+  height:          20px;
+  border-radius:   4px;
+  background:      white;
+  border:          1px solid #e0e2ea;
+  box-shadow:      0 1px 4px rgba(0,0,0,0.12);
+  cursor:          grab;
+  color:           #9699a6;
+  z-index:         1000;
+  transition:      background 0.15s, color 0.15s, box-shadow 0.15s;
+  pointer-events:  all;
+  user-select:     none;
+}
+
+.drag-handle-btn:hover {
+  background:  #1B3055;
+  color:       white;
+  box-shadow:  0 2px 8px rgba(27,48,85,0.25);
+  border-color:#1B3055;
+}
+
+.drag-handle-btn:active,
+.drag-handle-btn[draggable]:active {
+  cursor:     grabbing;
+  background: #0f2038;
+  color:      white;
+}
+
+/* Bloque siendo arrastrado */
+.drag-source-highlight {
+  opacity:    0.4;
+  outline:    2px dashed #0073ea;
+  outline-offset: 2px;
+}
+
+/* Drop target: línea visual mientras arrastra sobre el editor */
+.ProseMirror.drag-over-editor {
+  outline: none;
+}
+
+/* Resaltar el bloque al hover cuando hay handle visible */
+.ProseMirror [data-drag-hovered] {
+  background: rgba(0,115,234,0.04);
+  border-radius: 4px;
+}
+
 @keyframes shimmer {
   0%   { background-position: -400px 0; }
   100% { background-position: 400px 0; }
@@ -1396,8 +1448,10 @@ hr.divider {
 .pt-cols-header {
   display: grid;
   grid-template-columns: 90px 1fr 100px 110px 110px 36px;
-  background: #F5A000; padding: 7px 12px;
+  background: #1B3055; padding: 7px 12px;
   font-size: 8.5pt; font-weight: 700; color: white; letter-spacing: 0.3px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 .pt-row {
   display: grid;
@@ -3285,4 +3339,42 @@ hr.divider {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+}
+
+/* ── Modo Documento A4 ───────────────────────────────────────── */
+/* El wrapper no tiene borde en modo documento */
+.doc-page-editor .wysiwyg-wrap {
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* Toolbar sticky en modo documento */
+.doc-page-editor .wysiwyg-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: white;
+  border-bottom: 1px solid #e0e2ea;
+  border-radius: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* Quitar scroll interno del editor — el scroll es del contenedor A4 */
+.doc-page-editor .wysiwyg-editor {
+  overflow: visible !important;
+  height: auto !important;
+}
+.doc-page-editor .ProseMirror {
+  padding: 48px 64px !important;
+  min-height: 900px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+  color: #222;
+  outline: none;
+  line-height: 1.6;
+}
+.doc-page-editor .ProseMirror:focus { outline: none; }
+.doc-page-editor .ProseMirror img {
+  max-width: 100%;
 }

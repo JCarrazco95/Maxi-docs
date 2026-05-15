@@ -13,12 +13,23 @@ export function decodeItems(b64) {
   catch { return [] }
 }
 
+// ── Codificación columnas personalizadas ───────────────────────
+export function encodeColumns(cols) {
+  try { return btoa(unescape(encodeURIComponent(JSON.stringify(cols ?? [])))) }
+  catch { return btoa('[]') }
+}
+export function decodeColumns(b64) {
+  try { return JSON.parse(decodeURIComponent(escape(atob(b64 ?? btoa('[]'))))) }
+  catch { return [] }
+}
+
 // Títulos por defecto según tipo de tabla
 export const TABLE_TYPE_DEFAULTS = {
-  renta:      { title: 'COTIZACIÓN RENTA',      label: 'Renta' },
-  traslados:  { title: 'COTIZACIÓN TRASLADOS',  label: 'Traslados' },
-  accesorios: { title: 'COTIZACIÓN ACCESORIOS', label: 'Accesorios' },
-  generic:    { title: 'COTIZACIÓN',            label: 'Genérico' },
+  renta:        { title: 'COTIZACIÓN RENTA',      label: 'Renta' },
+  traslados:    { title: 'COTIZACIÓN TRASLADOS',  label: 'Traslados' },
+  accesorios:   { title: 'COTIZACIÓN ACCESORIOS', label: 'Accesorios' },
+  generic:      { title: 'COTIZACIÓN',            label: 'Genérico' },
+  personalizada:{ title: 'TABLA PERSONALIZADA',   label: 'Personalizada' },
 }
 
 // ── Nodo TipTap: pricing-table ─────────────────────────────────
@@ -47,6 +58,11 @@ export const PricingTable = Node.create({
         default:   'renta',
         parseHTML: el => el.getAttribute('data-table-type') ?? 'renta',
       },
+      // Columnas personalizadas (solo usado por tableType='personalizada')
+      columnsB64: {
+        default:   encodeColumns([]),
+        parseHTML: el => el.getAttribute('data-columns-b64') ?? encodeColumns([]),
+      },
     }
   },
 
@@ -54,10 +70,11 @@ export const PricingTable = Node.create({
 
   renderHTML({ node }) {
     return ['pricing-table', {
-      'data-title':      node.attrs.title,
-      'data-items-b64':  node.attrs.itemsB64,
-      'data-iva':        String(node.attrs.ivaRate),
-      'data-table-type': node.attrs.tableType,
+      'data-title':       node.attrs.title,
+      'data-items-b64':   node.attrs.itemsB64,
+      'data-iva':         String(node.attrs.ivaRate),
+      'data-table-type':  node.attrs.tableType,
+      'data-columns-b64': node.attrs.columnsB64,
     }]
   },
 
@@ -73,10 +90,11 @@ export const PricingTable = Node.create({
         return commands.insertContent({
           type: this.name,
           attrs: {
-            title:     attrs.title ?? defaultTitle,
-            itemsB64:  encodeItems([]),
-            ivaRate:   16,
-            tableType: type,
+            title:      attrs.title ?? defaultTitle,
+            itemsB64:   encodeItems([]),
+            ivaRate:    16,
+            tableType:  type,
+            columnsB64: attrs.columnsB64 ?? encodeColumns([]),
           },
         })
       },

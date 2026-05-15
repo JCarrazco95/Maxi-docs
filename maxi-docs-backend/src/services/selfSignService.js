@@ -126,9 +126,12 @@ export async function embedSignaturesInPdf(pdfUrl, signers) {
  * Guarda el PDF firmado sobreescribiendo el original o con nuevo nombre.
  */
 export function saveSignedPdf(pdfUrl, buffer) {
-  const filename  = pdfUrl.split('/').pop().replace('.pdf', '_firmado.pdf');
-  const outPath   = join(__dirname, '../../uploads/documents', filename);
+  const filename = pdfUrl.split('/').pop().replace('.pdf', '_firmado.pdf');
+  const outPath  = join(__dirname, '../../uploads/documents', filename);
   writeFileSync(outPath, buffer);
-  const port = process.env.PORT || 3001;
-  return `http://localhost:${port}/uploads/documents/${filename}`;
+  // Usar PUBLIC_URL si está configurado; de lo contrario, URL local
+  const base = process.env.PUBLIC_URL
+    ? process.env.PUBLIC_URL.replace(/\/$/, '')
+    : `http://localhost:${process.env.PORT || 3001}`;
+  return `${base}/uploads/documents/${filename}`;
 }

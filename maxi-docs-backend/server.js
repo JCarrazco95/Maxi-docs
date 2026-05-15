@@ -3,11 +3,23 @@ import express from 'express';
 import cors from 'cors';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { extractMondayContext } from './src/middleware/mondayAuth.js';
-import templatesRouter from './src/routes/templates.js';
-import documentsRouter from './src/routes/documents.js';
-import signaturesRouter from './src/routes/signatures.js';
-import catalogRouter   from './src/routes/catalog.js';
+import { extractMondayContext, requireEditor, requireAdmin } from './src/middleware/mondayAuth.js';
+import templatesRouter      from './src/routes/templates.js';
+import documentsRouter      from './src/routes/documents.js';
+import signaturesRouter     from './src/routes/signatures.js';
+import catalogRouter        from './src/routes/catalog.js';
+import approvalsRouter      from './src/routes/approvals.js';
+import contentLibraryRouter from './src/routes/contentLibrary.js';
+import settingsRouter       from './src/routes/settings.js';
+import paymentsRouter       from './src/routes/payments.js';
+import aiRouter             from './src/routes/ai.js';
+import embedRouter          from './src/routes/embed.js';
+import integrationsRouter   from './src/routes/integrations.js';
+import dealRoomsRouter      from './src/routes/dealRooms.js';
+import cpqRouter            from './src/routes/cpq.js';
+import workspacesRouter     from './src/routes/workspaces.js';
+import authRouter           from './src/routes/auth.js';
+import mondayRouter         from './src/routes/monday.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -15,14 +27,23 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Middlewares globales ──────────────────────────────────────────
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:8301').split(',');
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:8301')
+  .split(',')
+  .map(u => u.trim());
+
 app.use(cors({
-  origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin)),
+  origin: (origin, cb) => {
+    // Permitir sin origin en desarrollo local (Postman, mismo servidor)
+    if (!origin && process.env.NODE_ENV !== 'production') return cb(null, true);
+    if (origin && allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('CORS: origen no permitido'));
+  },
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ limit: '20mb', extended: true }));
 
-// ── PDFs locales (desarrollo sin R2) ─────────────────────────────
+// ── Archivos estáticos (PDFs y thumbnails en desarrollo) ──────────
 app.use('/uploads', express.static(join(__dirname, 'uploads')));
 
 // ── Health check ─────────────────────────────────────────────────
@@ -30,18 +51,26 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'maxi-docs-backend', timestamp: new Date().toISOString() });
 });
 
-// ── Portal del firmante (público, sin autenticación) ─────────────
-app.get('/api/portal/:signatureId', (req, _res, next) => {
-  req.mondayContext = { accountId: 'portal', userId: 'portal', isAdmin: false };
-  next();
-}, signaturesRouter);
-
 // ── Rutas de la API ───────────────────────────────────────────────
 app.use('/api', extractMondayContext);
-app.use('/api/templates', templatesRouter);
-app.use('/api/documents', documentsRouter);
-app.use('/api/signatures', signaturesRouter);
-app.use('/api/catalog',   catalogRouter);
+// Templates: crear/editar requiere role editor o superior
+app.use('/api/templates',       templatesRouter);
+app.use('/api/documents',       documentsRouter);
+app.use('/api/signatures',      signaturesRouter);
+app.use('/api/catalog',         catalogRouter);
+app.use('/api/approvals',       approvalsRouter);
+app.use('/api/content-library', contentLibraryRouter);
+app.use('/api/settings',        settingsRouter);
+app.use('/api/payments',        paymentsRouter);
+app.use('/api/ai',              aiRouter);
+app.use('/api/embed',           embedRouter);
+app.use('/api/integrations',    integrationsRouter);
+app.use('/api/rooms',           dealRoomsRouter);
+app.use('/api/cpq',             cpqRouter);
+app.use('/api/workspaces',      workspacesRouter);
+app.use('/api/monday',          mondayRouter);
+// Auth público — sin extractMondayContext (acceso externo via Google OAuth)
+app.use('/api/auth',           authRouter);
 
 // ── Error handler global ─────────────────────────────────────────
 app.use((err, _req, res, _next) => {

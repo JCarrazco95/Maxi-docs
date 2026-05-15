@@ -1,6 +1,17 @@
 import { Router } from 'express';
 import { query } from '../db/connection.js';
-import { extractVariables } from '../services/pdfService.js';
+import { extractVariables, generateThumbnail, wrapDocumentHtml } from '../services/pdfService.js';
+
+// Genera thumbnail en background sin bloquear la respuesta
+async function scheduleThumbnail(templateId, contentHtml) {
+  try {
+    const wrapped = wrapDocumentHtml(contentHtml, 'Plantilla')
+    const url     = await generateThumbnail(wrapped, templateId)
+    await query(`UPDATE templates SET thumbnail_url = $1 WHERE id = $2`, [url, templateId])
+  } catch (e) {
+    console.warn('[Thumbnail] Error generando thumbnail:', e.message)
+  }
+}
 
 const router = Router();
 
@@ -8,7 +19,7 @@ const router = Router();
 router.get('/', async (req, res) => {
   const { accountId } = req.mondayContext;
   const result = await query(
-    `SELECT id, name, description, variables, created_at, updated_at
+    `SELECT id, name, description, variables, thumbnail_url, created_at, updated_at
      FROM templates
      WHERE monday_account_id = $1
      ORDER BY updated_at DESC`,
@@ -18,14 +29,21 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/templates/:id — detalle de una plantilla
+// Busca por ID primero (sin filtro de cuenta) para que funcione desde
+// el editor en nueva pestaña donde el contexto de Monday puede variar
 router.get('/:id', async (req, res) => {
-  const { accountId } = req.mondayContext;
+  const { accountId, isAdmin } = req.mondayContext;
   const result = await query(
-    `SELECT * FROM templates WHERE id = $1 AND monday_account_id = $2`,
-    [req.params.id, accountId]
+    `SELECT * FROM templates WHERE id = $1`,
+    [req.params.id]
   );
-  if (!result.rows[0]) return res.status(404).json({ error: 'Template not found' });
-  res.json(result.rows[0]);
+  const tpl = result.rows[0];
+  if (!tpl) return res.status(404).json({ error: 'Template not found' });
+  // Verificar pertenencia solo para no-admin y cuando no es 'dev'
+  if (!isAdmin && tpl.monday_account_id !== accountId && accountId !== 'dev') {
+    return res.status(403).json({ error: 'Sin permiso para esta plantilla' });
+  }
+  res.json(tpl);
 });
 
 // POST /api/templates — crea una plantilla nueva
@@ -46,7 +64,10 @@ router.post('/', async (req, res) => {
     [name, description, content_html, JSON.stringify(variables), userId, accountId]
   );
 
-  res.status(201).json(result.rows[0]);
+  const tpl = result.rows[0]
+  // Generar thumbnail en background (no bloquea la respuesta)
+  scheduleThumbnail(tpl.id, content_html)
+  res.status(201).json(tpl);
 });
 
 // PUT /api/templates/:id — actualiza una plantilla
@@ -68,7 +89,9 @@ router.put('/:id', async (req, res) => {
   );
 
   if (!result.rows[0]) return res.status(404).json({ error: 'Template not found' });
-  res.json(result.rows[0]);
+  const tpl = result.rows[0]
+  if (content_html) scheduleThumbnail(tpl.id, content_html)
+  res.json(tpl);
 });
 
 // POST /api/templates/migrate-dev — copia las plantillas de 'dev' a la cuenta real

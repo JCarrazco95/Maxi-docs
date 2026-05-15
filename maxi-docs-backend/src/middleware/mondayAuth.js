@@ -29,11 +29,29 @@ export function validateMondayWebhook(req, res, next) {
  * los headers que el SDK de Monday adjunta automaticamente.
  */
 export function extractMondayContext(req, res, next) {
-  // En desarrollo, permitir pasar el contexto manualmente via headers
   req.mondayContext = {
-    accountId: req.headers['x-monday-account-id'] || 'dev',
-    userId:    req.headers['x-monday-user-id']    || 'dev',
-    isAdmin:   req.headers['x-monday-is-admin']   === 'true',
+    accountId:   req.headers['x-monday-account-id']  || 'dev',
+    userId:      req.headers['x-monday-user-id']     || 'dev',
+    isAdmin:     req.headers['x-monday-is-admin']    === 'true',
+    workspaceId: req.headers['x-monday-workspace-id'] || null, // workspace activo
+    role: req.headers['x-monday-is-admin'] === 'true' ? 'admin'
+        : req.headers['x-monday-role'] || 'editor',
   };
+  next();
+}
+
+// Middlewares de rol para usar en rutas específicas
+export function requireAdmin(req, res, next) {
+  if (!req.mondayContext?.isAdmin) {
+    return res.status(403).json({ error: 'Se requieren permisos de administrador' });
+  }
+  next();
+}
+
+export function requireEditor(req, res, next) {
+  const role = req.mondayContext?.role;
+  if (role === 'viewer') {
+    return res.status(403).json({ error: 'No tienes permisos para realizar esta acción' });
+  }
   next();
 }

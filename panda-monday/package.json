@@ -10,6 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@tiptap/extension-color": "^3.22.5",
     "@tiptap/extension-font-family": "^3.22.5",
     "@tiptap/extension-image": "^3.22.5",
@@ -29,9 +32,11 @@
     "axios": "^1.15.0",
     "monday-sdk-js": "^0.5.8",
     "monday-ui-react-core": "^2.149.5",
+    "pdfjs-dist": "^5.7.284",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^7.14.1"
+    "react-router-dom": "^7.14.1",
+    "tiptap-extension-global-drag-handle": "^0.1.18"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

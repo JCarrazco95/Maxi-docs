@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import api from '../api/client.js'
 import DocumentGeneratorModal from './components/DocumentGeneratorModal.jsx'
-import FieldConfiguratorModal from './components/FieldConfiguratorModal.jsx'
+import SendSignatureModal from './components/SendSignatureModal.jsx'
 import SignatureStatusPanel from './components/SignatureStatusPanel.jsx'
+import ApprovalPanel from './components/ApprovalPanel.jsx'
 
 const STATUS_LABELS = {
-  draft:    'Borrador',
-  sent:     'Enviado',
-  signed:   'Firmado',
+  draft:             'Borrador',
+  pending_approval:  'En aprobación',
+  sent:              'Enviado',
+  signed:            'Firmado',
   rejected: 'Rechazado',
 }
 
@@ -148,6 +150,23 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
 
   useEffect(() => { loadDocuments() }, [loadDocuments])
 
+  // Recargar cuando el userId cambia (contexto de Monday cargó después del montaje)
+  const prevUserId = useRef(userId)
+  useEffect(() => {
+    if (userId && userId !== prevUserId.current && userId !== 'dev') {
+      prevUserId.current = userId
+      loadDocuments()
+    }
+  }, [userId, loadDocuments])
+
+  // Polling: recargar cada 30s si hay documentos 'sent' pendientes de firma
+  useEffect(() => {
+    const hasPending = documents.some(d => d.status === 'sent')
+    if (!hasPending) return
+    const interval = setInterval(loadDocuments, 30_000)
+    return () => clearInterval(interval)
+  }, [documents, loadDocuments])
+
   async function handleDelete(id) {
     if (!confirm('¿Eliminar este documento? Esta acción no se puede deshacer.')) return
     try {
@@ -164,8 +183,9 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
   }
 
   function handleSignSent(doc) {
-    setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, status: 'sent' } : d))
     setSignModalDoc(null)
+    // Recargar desde el servidor para tener el estado real
+    loadDocuments()
   }
 
   const formatDate = iso =>
@@ -358,6 +378,17 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
                 {expandedDocId === doc.id && (
                   <tr key={`${doc.id}-panel`} className="row-panel">
                     <td colSpan={isAdmin ? 6 : 5} style={{ padding: 0 }}>
+                      <ApprovalPanel
+                        documentId={doc.id}
+                        documentStatus={doc.status}
+                        onStatusChange={newStatus => {
+                          if (newStatus !== undefined) {
+                            setDocuments(prev => prev.map(d => d.id === doc.id
+                              ? { ...d, approval_status: newStatus }
+                              : d))
+                          }
+                        }}
+                      />
                       <SignatureStatusPanel
                         documentId={doc.id}
                         documentName={doc.name}
@@ -383,7 +414,7 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
       )}
 
       {signModalDoc && (
-        <FieldConfiguratorModal
+        <SendSignatureModal
           document={signModalDoc}
           itemId={itemId}
           onClose={() => setSignModalDoc(null)}

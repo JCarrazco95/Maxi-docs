@@ -1,25 +1,60 @@
 import 'dotenv/config';
+import nodemailer from 'nodemailer';
 
-const RESEND_KEY = process.env.RESEND_API_KEY;
-const FROM       = process.env.EMAIL_FROM || 'MaxiDocs <onboarding@resend.dev>';
+const RESEND_KEY  = process.env.RESEND_API_KEY;
+const SMTP_HOST   = process.env.SMTP_HOST;
+const SMTP_PORT   = Number(process.env.SMTP_PORT  || 587);
+const SMTP_USER   = process.env.SMTP_USER;
+const SMTP_PASS   = process.env.SMTP_PASS;
+const FROM        = process.env.EMAIL_FROM || 'MaxiDocs <noreply@maxidocs.app>';
 
-function isConfigured() {
-  return RESEND_KEY && RESEND_KEY !== 'tu_resend_api_key';
+// Detectar qué proveedor está configurado
+function getProvider() {
+  if (RESEND_KEY && RESEND_KEY !== 'tu_resend_api_key') return 'resend';
+  if (SMTP_HOST && SMTP_USER && SMTP_PASS)               return 'smtp';
+  return null;
+}
+
+// Crear transporter SMTP (reutilizable)
+let _smtpTransport;
+function getSmtp() {
+  if (_smtpTransport) return _smtpTransport;
+  _smtpTransport = nodemailer.createTransport({
+    host:   SMTP_HOST,
+    port:   SMTP_PORT,
+    secure: SMTP_PORT === 465,
+    auth:   { user: SMTP_USER, pass: SMTP_PASS },
+  });
+  return _smtpTransport;
 }
 
 async function send({ to, subject, html }) {
-  if (!isConfigured()) {
-    console.log('[Email] Resend no configurado — email omitido para:', to);
-    return;
+  const provider = getProvider();
+
+  if (!provider) {
+    console.warn('[Email] ⚠️  Sin proveedor configurado. Agrega RESEND_API_KEY o SMTP_HOST/SMTP_USER/SMTP_PASS al .env');
+    console.warn('[Email] Email no enviado a:', to, '— Asunto:', subject);
+    return { skipped: true };
   }
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_KEY}` },
-    body: JSON.stringify({ from: FROM, to: Array.isArray(to) ? to : [to], subject, html }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${JSON.stringify(data)}`);
-  console.log('[Email] Enviado a', to, '— ID:', data.id);
+
+  const recipients = Array.isArray(to) ? to : [to];
+
+  if (provider === 'resend') {
+    const res = await fetch('https://api.resend.com/emails', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_KEY}` },
+      body:    JSON.stringify({ from: FROM, to: recipients, subject, html }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`Resend ${res.status}: ${JSON.stringify(data)}`);
+    console.log('[Email/Resend] ✅ Enviado a', recipients.join(', '), '— ID:', data.id);
+    return data;
+  }
+
+  // SMTP
+  const info = await getSmtp().sendMail({ from: FROM, to: recipients.join(', '), subject, html });
+  console.log('[Email/SMTP] ✅ Enviado a', recipients.join(', '), '— MsgID:', info.messageId);
+  return info;
 }
 
 // ── Templates ─────────────────────────────────────────────────
@@ -129,10 +164,24 @@ function documentSignedTemplate({ documentName, pdfUrl, signerName }) {
 </html>`;
 }
 
+// ── Diagnóstico ────────────────────────────────────────────────
+export function getEmailDiagnostics() {
+  const provider = getProvider();
+  return {
+    provider:    provider ?? 'none',
+    configured:  !!provider,
+    resend_key:  RESEND_KEY && RESEND_KEY !== 'tu_resend_api_key' ? '✅ configurado' : '❌ placeholder o vacío',
+    smtp_host:   SMTP_HOST  || '—',
+    smtp_user:   SMTP_USER  || '—',
+    from:        FROM,
+    hint: provider ? null : 'Configura RESEND_API_KEY o SMTP_HOST+SMTP_USER+SMTP_PASS en el .env',
+  };
+}
+
+export { send };
+
 // ── Exports ───────────────────────────────────────────────────
 
-// Construye la URL del portal del firmante si PUBLIC_URL está configurado,
-// si no, usa el signUrl directo de DocuSeal
 function buildPortalUrl(signatureId, signUrl) {
   const publicUrl = process.env.PUBLIC_URL;
   if (publicUrl && signatureId) return `${publicUrl}/sign/${signatureId}`;
@@ -153,5 +202,29 @@ export async function sendSignedNotification({ toEmail, documentName, pdfUrl, si
     to:      toEmail,
     subject: `✅ Firmado: ${documentName}`,
     html:    documentSignedTemplate({ documentName, pdfUrl, signerName }),
+  });
+}
+
+export async function sendViewedNotification({ toEmail, documentName, signerName, signerEmail }) {
+  await send({
+    to:      toEmail,
+    subject: `👁️ ${signerName} abrió el documento: ${documentName}`,
+    html: `
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f6f7fb;font-family:Arial,sans-serif;">
+<div style="max-width:520px;margin:32px auto;background:white;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+  <div style="background:#1B3055;padding:24px 32px;">
+    <div style="color:white;font-size:18px;font-weight:700;">Maxi<span style="color:#60a5fa;">Docs</span></div>
+  </div>
+  <div style="padding:28px 32px;">
+    <p style="font-size:16px;font-weight:600;color:#323338;margin:0 0 8px;">Documento abierto 👁️</p>
+    <p style="font-size:14px;color:#676879;line-height:1.6;margin:0 0 20px;">
+      <strong>${signerName}</strong> (${signerEmail}) acaba de abrir el documento
+      <strong>"${documentName}"</strong> para revisarlo.
+    </p>
+    <p style="font-size:12px;color:#94a3b8;margin:0;">Notificación automática de MaxiDocs · MAXIRent</p>
+  </div>
+</div>
+</body></html>`,
   });
 }
