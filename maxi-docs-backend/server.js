@@ -27,15 +27,16 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Middlewares globales ──────────────────────────────────────────
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:8301,https://maxi-docs.vercel.app')
-  .split(',')
-  .map(u => u.trim());
+const allowedOrigins = [
+  'http://localhost:8301',
+  'https://maxi-docs.vercel.app',
+  ...(process.env.FRONTEND_URL || '').split(',').map(u => u.trim()).filter(Boolean),
+];
 
 app.use(cors({
   origin: (origin, cb) => {
-    // Permitir sin origin en desarrollo local (Postman, mismo servidor)
-    if (!origin && process.env.NODE_ENV !== 'production') return cb(null, true);
-    if (origin && allowedOrigins.includes(origin)) return cb(null, true);
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
     cb(new Error('CORS: origen no permitido'));
   },
   credentials: true,
