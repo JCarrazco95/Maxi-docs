@@ -37,4 +37,4 @@ COPY . .
 RUN mkdir -p uploads/documents uploads/thumbnails
 
 EXPOSE 3001
-CMD ["sh", "-c", "node src/db/migrate.js && node server.js"]
+CMD ["sh", "-c", "node src/db/migrate.js; node server.js"]
