@@ -661,11 +661,14 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
 
         {/* Totales tipo tarifas — sin IVA, con deducible */}
         {items.length > 0 && tableType === 'tarifas' && (() => {
-          const totalMensual  = items.reduce((s,i) => s + (Number(i.dailyRate)||0) * 30 * (Number(i.quantity)||1), 0)
-          const avgDeducible  = items.length > 0
+          const totalMensual     = items.reduce((s,i) => s + (Number(i.dailyRate)||0) * 30 * (Number(i.quantity)||1), 0)
+          const avgDeducible     = items.length > 0
             ? items.reduce((s,i) => s + (Number(i.deductible)||0), 0) / items.length
             : 0
-          const deducibleAmt  = totalMensual * (avgDeducible / 100)
+          const deducibleAmt     = totalMensual * (avgDeducible / 100)
+          const totalEntrega     = items.reduce((s,i) => s + (Number(i.delivery)||0), 0)
+          const totalRecoleccion = items.reduce((s,i) => s + (Number(i.retrieval)||0), 0)
+          const grandTotal       = totalMensual + deducibleAmt + totalEntrega + totalRecoleccion
           return (
             <div className="pt-totals">
               <div className="pt-total-line">
@@ -678,9 +681,21 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
                   <span>{fmt(deducibleAmt)}</span>
                 </div>
               )}
+              {totalEntrega > 0 && (
+                <div className="pt-total-line" style={{ color:'#676879', fontSize:11 }}>
+                  <span>Entrega</span>
+                  <span>{fmt(totalEntrega)}</span>
+                </div>
+              )}
+              {totalRecoleccion > 0 && (
+                <div className="pt-total-line" style={{ color:'#676879', fontSize:11 }}>
+                  <span>Recolección</span>
+                  <span>{fmt(totalRecoleccion)}</span>
+                </div>
+              )}
               <div className="pt-total-line pt-total-grand">
-                <span>Total con deducible</span>
-                <span className="pt-grand-val">{fmt(totalMensual + deducibleAmt)}</span>
+                <span>Total</span>
+                <span className="pt-grand-val">{fmt(grandTotal)}</span>
               </div>
             </div>
           )
