@@ -91,6 +91,16 @@ async function ensureColumns() {
     `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS monday_item_id  TEXT`,
     `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS sort_order      INTEGER DEFAULT 0`,
     `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS active          BOOLEAN DEFAULT true`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS owner_email     TEXT`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS content_html    TEXT`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS pdf_url         TEXT`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS pdf_hash        VARCHAR(64)`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS doc_number      VARCHAR(50)`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS approval_status VARCHAR(50)`,
+    `ALTER TABLE signatures         ADD COLUMN IF NOT EXISTS viewed_at       TIMESTAMPTZ`,
+    `ALTER TABLE signatures         ADD COLUMN IF NOT EXISTS signed_at       TIMESTAMPTZ`,
+    `ALTER TABLE signatures         ADD COLUMN IF NOT EXISTS time_spent_seconds INT`,
+    `ALTER TABLE signatures         ADD COLUMN IF NOT EXISTS signing_order   INT DEFAULT 1`,
   ];
   for (const sql of cols) {
     try { await query(sql); } catch {}
