@@ -34,6 +34,8 @@ RUN npm ci --omit=dev
 
 COPY . .
 
+# Bust cache cuando el schema cambia — incrementar este número para forzar rebuild
+ARG CACHE_BUST=2
 RUN mkdir -p uploads/documents uploads/thumbnails
 
 EXPOSE 3001
