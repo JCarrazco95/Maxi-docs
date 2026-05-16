@@ -283,6 +283,8 @@ CREATE INDEX IF NOT EXISTS idx_embed_tokens_expires ON embed_tokens(expires_at);
 -- Columnas adicionales en tablas existentes (re-ejecución segura)
 -- =================================================================
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_number        VARCHAR(50);
+ALTER TABLE catalog_categories ADD COLUMN IF NOT EXISTS monday_group_id TEXT;
+ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS monday_item_id  TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS pdf_hash          VARCHAR(64);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS approval_status   VARCHAR(50);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS workspace_id      UUID REFERENCES workspaces(id) ON DELETE SET NULL;
