@@ -1,13 +1,16 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "headers": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://maxi-docs-production.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://maxi-docs-production.up.railway.app/uploads/:path*"
+    },
     {
       "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" }
-      ]
+      "destination": "/index.html"
     }
   ]
 }
