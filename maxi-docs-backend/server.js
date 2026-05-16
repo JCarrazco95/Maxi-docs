@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { query } from './src/db/connection.js';
 import cors from 'cors';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -82,6 +83,20 @@ app.use((err, _req, res, _next) => {
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
+
+// Columnas opcionales — se agregan si no existen (idempotente)
+async function ensureColumns() {
+  const cols = [
+    `ALTER TABLE catalog_categories ADD COLUMN IF NOT EXISTS monday_group_id TEXT`,
+    `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS monday_item_id  TEXT`,
+    `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS sort_order      INTEGER DEFAULT 0`,
+    `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS active          BOOLEAN DEFAULT true`,
+  ];
+  for (const sql of cols) {
+    try { await query(sql); } catch {}
+  }
+}
+ensureColumns();
 
 app.listen(PORT, () => {
   console.log(`\n Maxi-Docs Backend corriendo en http://localhost:${PORT}`);

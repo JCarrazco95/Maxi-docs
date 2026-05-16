@@ -31,12 +31,12 @@ router.get('/', async (req, res) => {
   const { accountId } = req.mondayContext;
 
   const catRes = await query(
-    `SELECT id, name, sort_order, monday_group_id FROM catalog_categories
+    `SELECT id, name, sort_order FROM catalog_categories
      WHERE monday_account_id = $1 ORDER BY sort_order, name`,
     [accountId]
   );
   const prodRes = await query(
-    `SELECT id, category_id, name, sku, price::float AS price, unit, description, monday_item_id
+    `SELECT id, category_id, name, sku, price::float AS price, unit, description
      FROM catalog_products
      WHERE monday_account_id = $1 AND active = true
      ORDER BY sort_order, name`,
@@ -70,7 +70,7 @@ router.get('/', async (req, res) => {
 router.get('/categories', async (req, res) => {
   const { accountId } = req.mondayContext;
   const r = await query(
-    `SELECT id, name, sort_order, monday_group_id,
+    `SELECT id, name, sort_order,
             (SELECT COUNT(*) FROM catalog_products
              WHERE category_id = catalog_categories.id AND active = true) AS product_count
      FROM catalog_categories WHERE monday_account_id = $1 ORDER BY sort_order, name`,
