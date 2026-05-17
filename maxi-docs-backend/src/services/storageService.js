@@ -40,9 +40,10 @@ export async function uploadPdf(key, buffer) {
     mkdirSync(uploadsDir, { recursive: true });
     const filename = key.split('/').pop();
     writeFileSync(join(uploadsDir, filename), buffer);
-    const port = process.env.PORT || 3001;
-    console.log(`[DEV] PDF guardado localmente: uploads/documents/${filename}`);
-    return `http://localhost:${port}/uploads/documents/${filename}`;
+    // En producción usar PUBLIC_URL para que la URL sea accesible desde el browser
+    const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
+    console.log(`[Storage] PDF guardado localmente: uploads/documents/${filename}`);
+    return `${base}/uploads/documents/${filename}`;
   }
 
   await s3.send(

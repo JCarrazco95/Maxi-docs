@@ -36,7 +36,14 @@ let _counter = 0
 
 function resolvePdfUrl(url) {
   if (!url) return null
-  if (url.startsWith('http://localhost:3001')) return url.replace('http://localhost:3001', '')
+  // localhost → ruta relativa (dev con proxy Vite)
+  if (url.startsWith('http://localhost')) {
+    try { return new URL(url).pathname + new URL(url).search } catch { return url }
+  }
+  // URL de Railway → ruta relativa (pasa por proxy Vercel)
+  if (url.includes('railway.app')) {
+    try { return new URL(url).pathname } catch { return url }
+  }
   return url
 }
 
