@@ -12,17 +12,69 @@ const router = Router();
 const MONDAY_COTIZACIONES_BOARD = '18413534550';
 const MONDAY_COTIZACIONES_GROUP = 'group_mm3ep2rx';
 
-async function createMondayDocItem({ docNumber, docName, ownerName, pdfUrl }) {
+// Columnas del board de cotizaciones
+const COL_CLIENTE       = 'text_mm3e1jhd';
+const COL_MONTO_TOTAL   = 'numeric_mm3etbvx';
+const COL_FECHA_EMISION = 'date_mm3ett0s';
+const COL_ESTADO        = 'color_mm3e5383';
+
+// Extrae el total de todas las tablas de precios en el HTML
+function extractPricingTotal(html) {
+  if (!html) return 0;
+  let total = 0;
+  const re = /<pricing-table([^>]*)>/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const attrs     = m[1];
+    const typeMatch = attrs.match(/data-table-type="([^"]*)"/);
+    const b64Match  = attrs.match(/data-items-b64="([^"]*)"/);
+    const ivaMatch  = attrs.match(/data-iva-rate="([^"]*)"/);
+    if (!b64Match || !typeMatch) continue;
+    const tableType = typeMatch[1];
+    const ivaRate   = parseFloat(ivaMatch?.[1] ?? 0) / 100;
+    try {
+      const items = JSON.parse(Buffer.from(b64Match[1], 'base64').toString('utf8'));
+      for (const i of items) {
+        const qty = Number(i.quantity) || 1;
+        if (tableType === 'tarifas') {
+          const mensual   = (Number(i.dailyRate) || 0) * 30 * qty;
+          const deduc     = (Number(i.deductible) || 0) / 100;
+          const delivery  = Number(i.delivery)  || 0;
+          const retrieval = Number(i.retrieval) || 0;
+          total += mensual * (1 + deduc) + delivery + retrieval;
+        } else if (tableType === 'accesorios') {
+          const subtotal = (Number(i.price) || 0) * qty;
+          total += subtotal * (1 + ivaRate);
+        }
+      }
+    } catch { /* ignorar items corruptos */ }
+  }
+  return Math.round(total);
+}
+
+async function createMondayDocItem({ docNumber, docName, clientName, totalAmount, html }) {
   const token = process.env.MONDAY_API_TOKEN;
   if (!token) return null;
   try {
-    const itemName = `${docNumber} | ${docName}`;
+    const itemName  = `${docNumber} | ${docName}`;
+    const today     = new Date().toISOString().split('T')[0];
+    const computed  = totalAmount ?? extractPricingTotal(html);
+    const client    = clientName ?? '';
+
+    const colValues = JSON.stringify({
+      [COL_CLIENTE]:       client,
+      [COL_MONTO_TOTAL]:   String(computed),
+      [COL_FECHA_EMISION]: { date: today },
+      [COL_ESTADO]:        { label: 'En Proceso' },
+    });
+
     const mutation = `
       mutation {
         create_item(
           board_id: ${MONDAY_COTIZACIONES_BOARD},
           group_id: "${MONDAY_COTIZACIONES_GROUP}",
-          item_name: ${JSON.stringify(itemName)}
+          item_name: ${JSON.stringify(itemName)},
+          column_values: ${JSON.stringify(colValues)}
         ) { id }
       }
     `;
@@ -32,8 +84,9 @@ async function createMondayDocItem({ docNumber, docName, ownerName, pdfUrl }) {
       body:    JSON.stringify({ query: mutation }),
     });
     const data = await res.json();
+    if (data.errors?.length) throw new Error(data.errors[0].message);
     const mondayItemId = data?.data?.create_item?.id ?? null;
-    console.log(`[Monday] Item creado: ${mondayItemId} — ${itemName}`);
+    console.log(`[Monday] Item creado: ${mondayItemId} — ${itemName} | Cliente: ${client} | Total: $${computed}`);
     return mondayItemId;
   } catch (e) {
     console.warn('[Monday] No se pudo crear item:', e.message);
@@ -301,7 +354,13 @@ router.post('/generate', requireEditor, async (req, res) => {
   const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
 
   // 6. Crear item en Monday (board de cotizaciones) — no bloquea si falla
-  const mondayDocItemId = await createMondayDocItem({ docNumber, docName: name, ownerName: owner_name, pdfUrl });
+  const clientName = filled_data?.razon_social || filled_data?.nombre || filled_data?.name || '';
+  const mondayDocItemId = await createMondayDocItem({
+    docNumber,
+    docName:    name,
+    clientName,
+    html:       filledHtml,
+  });
 
   // 7. La URL del PDF apunta a la API (sirve desde DB)
   const apiPdfUrl = `/api/documents/${documentId}/pdf`;
