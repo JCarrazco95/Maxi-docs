@@ -59,6 +59,7 @@ function extractPricingTotal(html) {
 
 async function createMondayDocItem({ docNumber, docName, clientName, totalAmount, html, mondayUserId }) {
   const token = process.env.MONDAY_API_TOKEN;
+  console.log(`[Monday] createMondayDocItem iniciando — token: ${token ? '✅ presente' : '❌ AUSENTE'} | userId: ${mondayUserId}`);
   if (!token) return null;
   try {
     const itemName  = `${docNumber} | ${docName}`;
@@ -77,6 +78,8 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
       colValues[COL_RESPONSABLE] = { personsAndTeams: [{ id: Number(mondayUserId), kind: 'person' }] };
     }
 
+    console.log(`[Monday] Enviando mutation — item: ${itemName} | cliente: ${client} | total: ${computed}`);
+
     const mutation = `
       mutation {
         create_item(
@@ -93,12 +96,13 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
       body:    JSON.stringify({ query: mutation }),
     });
     const data = await res.json();
+    console.log(`[Monday] Respuesta: ${JSON.stringify(data).slice(0, 300)}`);
     if (data.errors?.length) throw new Error(data.errors[0].message);
     const mondayItemId = data?.data?.create_item?.id ?? null;
-    console.log(`[Monday] Item creado: ${mondayItemId} — ${itemName} | Cliente: ${client} | Total: $${computed}`);
+    console.log(`[Monday] ✅ Item creado: ${mondayItemId}`);
     return mondayItemId;
   } catch (e) {
-    console.warn('[Monday] No se pudo crear item:', e.message);
+    console.error('[Monday] ❌ Error:', e.message, e.stack?.split('\n')[1]);
     return null;
   }
 }
