@@ -329,6 +329,6 @@ CREATE TABLE IF NOT EXISTS catalog_products (
 CREATE INDEX IF NOT EXISTS idx_cat_prod_account  ON catalog_products(monday_account_id);
 CREATE INDEX IF NOT EXISTS idx_cat_prod_category ON catalog_products(category_id);
 
-CREATE TRIGGER set_catalog_products_updated_at
+CREATE OR REPLACE TRIGGER set_catalog_products_updated_at
   BEFORE UPDATE ON catalog_products
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
