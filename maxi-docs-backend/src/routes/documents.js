@@ -9,6 +9,38 @@ import { logEvent, hashPdfFile } from '../services/auditService.js';
 
 const router = Router();
 
+const MONDAY_COTIZACIONES_BOARD = '18413534550';
+const MONDAY_COTIZACIONES_GROUP = 'group_mm3ep2rx';
+
+async function createMondayDocItem({ docNumber, docName, ownerName, pdfUrl }) {
+  const token = process.env.MONDAY_API_TOKEN;
+  if (!token) return null;
+  try {
+    const itemName = `${docNumber} | ${docName}`;
+    const mutation = `
+      mutation {
+        create_item(
+          board_id: ${MONDAY_COTIZACIONES_BOARD},
+          group_id: "${MONDAY_COTIZACIONES_GROUP}",
+          item_name: ${JSON.stringify(itemName)}
+        ) { id }
+      }
+    `;
+    const res = await fetch('https://api.monday.com/v2', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: token },
+      body:    JSON.stringify({ query: mutation }),
+    });
+    const data = await res.json();
+    const mondayItemId = data?.data?.create_item?.id ?? null;
+    console.log(`[Monday] Item creado: ${mondayItemId} — ${itemName}`);
+    return mondayItemId;
+  } catch (e) {
+    console.warn('[Monday] No se pudo crear item:', e.message);
+    return null;
+  }
+}
+
 // POST /api/documents/preview — renderizar HTML del documento sin generar PDF
 // Expande <pricing-table> y aplica el wrapper CSS para mostrar en iframe
 router.post('/preview', (req, res) => {
@@ -250,29 +282,32 @@ router.post('/generate', requireEditor, async (req, res) => {
   const seqRow = await query(`SELECT nextval('doc_number_seq') AS n`);
   const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
 
-  // 6. Guardar documento en la base de datos
+  // 6. Crear item en Monday (board de cotizaciones) — no bloquea si falla
+  const mondayDocItemId = await createMondayDocItem({ docNumber, docName: name, ownerName: owner_name, pdfUrl });
+
+  // 7. Guardar documento en la base de datos
   const result = await query(
     `INSERT INTO documents
        (id, template_id, name, doc_number, monday_board_id, monday_item_id, monday_account_id,
-        monday_user_id, owner_email, owner_name, filled_data, content_html, pdf_url, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'draft')
+        monday_user_id, owner_email, owner_name, monday_doc_item_id, filled_data, content_html, pdf_url, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft')
      RETURNING *`,
     [
       documentId, template_id, name, docNumber,
       monday_board_id, monday_item_id, accountId,
-      userId, owner_email || null, owner_name || null, JSON.stringify(filled_data), filledHtml, pdfUrl,
+      userId, owner_email || null, owner_name || null, mondayDocItemId,
+      JSON.stringify(filled_data), filledHtml, pdfUrl,
     ]
   );
 
   const doc = result.rows[0];
 
-  // Audit: documento creado
   logEvent({
     documentId: doc.id,
     action:     'document.created',
     actor:      { id: userId },
     pdfHash:    hashPdfFile(pdfUrl),
-    metadata:   { template_id, name, monday_item_id },
+    metadata:   { template_id, name, monday_item_id, monday_doc_item_id: mondayDocItemId },
   });
 
   res.status(201).json(doc);
