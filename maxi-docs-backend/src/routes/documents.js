@@ -24,19 +24,34 @@ const COL_PDF           = 'file_mm3ermnh';
 function extractPricingTotal(html) {
   if (!html) return 0;
   let total = 0;
-  const re = /<pricing-table([^>]*)>/g;
-  let m;
   let subtotalTarifas = 0;
   let subtotalAcc     = 0;
 
+  // Buscar todos los nodos pricing-table (con o sin cierre)
+  const re = /<pricing-table([^>]*?)(?:\s*\/?>|>)/gi;
+  let m;
+  let tableCount = 0;
+
   while ((m = re.exec(html)) !== null) {
+    tableCount++;
     const attrs     = m[1];
-    const typeMatch = attrs.match(/data-table-type="([^"]*)"/);
-    const b64Match  = attrs.match(/data-items-b64="([^"]*)"/);
-    if (!b64Match || !typeMatch) continue;
+    const typeMatch = attrs.match(/data-table-type=["']([^"']+)["']/i);
+    const b64Match  = attrs.match(/data-items-b64=["']([^"']+)["']/i);
+    if (!b64Match || !typeMatch) {
+      console.log(`[Monday:total] tabla sin b64 o type — attrs: ${attrs.slice(0,100)}`);
+      continue;
+    }
     const tableType = typeMatch[1];
     try {
-      const items = JSON.parse(Buffer.from(b64Match[1], 'base64').toString('utf8'));
+      // Intentar decodificación estándar y Unicode-safe
+      let rawJson;
+      try {
+        rawJson = Buffer.from(b64Match[1], 'base64').toString('utf8');
+      } catch {
+        rawJson = decodeURIComponent(escape(atob(b64Match[1])));
+      }
+      const items = JSON.parse(rawJson);
+      console.log(`[Monday:total] tabla ${tableType} — ${items.length} items`);
       for (const i of items) {
         const qty = Number(i.quantity) || 1;
         if (tableType === 'tarifas') {
@@ -49,9 +64,12 @@ function extractPricingTotal(html) {
           subtotalAcc += (Number(i.price) || 0) * qty;
         }
       }
-    } catch { /* ignorar items corruptos */ }
+    } catch (e) {
+      console.log(`[Monday:total] error decodificando: ${e.message}`);
+    }
   }
 
+  console.log(`[Monday:total] tablas encontradas: ${tableCount} | tarifas: ${subtotalTarifas} | acc: ${subtotalAcc}`);
   // Total = (tarifas + adecuaciones) + 16% IVA
   total = (subtotalTarifas + subtotalAcc) * 1.16;
   return Math.round(total);
