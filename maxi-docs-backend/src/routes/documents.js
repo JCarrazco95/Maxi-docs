@@ -17,6 +17,8 @@ const COL_CLIENTE       = 'text_mm3e1jhd';
 const COL_MONTO_TOTAL   = 'numeric_mm3etbvx';
 const COL_FECHA_EMISION = 'date_mm3ett0s';
 const COL_ESTADO        = 'color_mm3e5383';
+const COL_RESPONSABLE   = 'multiple_person_mm3ekbxy';
+const COL_PDF           = 'file_mm3ermnh';
 
 // Extrae el total de todas las tablas de precios en el HTML
 function extractPricingTotal(html) {
@@ -52,7 +54,7 @@ function extractPricingTotal(html) {
   return Math.round(total);
 }
 
-async function createMondayDocItem({ docNumber, docName, clientName, totalAmount, html }) {
+async function createMondayDocItem({ docNumber, docName, clientName, totalAmount, html, mondayUserId }) {
   const token = process.env.MONDAY_API_TOKEN;
   if (!token) return null;
   try {
@@ -61,12 +63,16 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
     const computed  = totalAmount ?? extractPricingTotal(html);
     const client    = clientName ?? '';
 
-    const colValues = JSON.stringify({
+    const colValues = {
       [COL_CLIENTE]:       client,
       [COL_MONTO_TOTAL]:   String(computed),
       [COL_FECHA_EMISION]: { date: today },
       [COL_ESTADO]:        { label: 'En Proceso' },
-    });
+    };
+
+    if (mondayUserId && mondayUserId !== 'dev') {
+      colValues[COL_RESPONSABLE] = { personsAndTeams: [{ id: Number(mondayUserId), kind: 'person' }] };
+    }
 
     const mutation = `
       mutation {
@@ -74,7 +80,7 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
           board_id: ${MONDAY_COTIZACIONES_BOARD},
           group_id: "${MONDAY_COTIZACIONES_GROUP}",
           item_name: ${JSON.stringify(itemName)},
-          column_values: ${JSON.stringify(colValues)}
+          column_values: ${JSON.stringify(JSON.stringify(colValues))}
         ) { id }
       }
     `;
@@ -91,6 +97,28 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
   } catch (e) {
     console.warn('[Monday] No se pudo crear item:', e.message);
     return null;
+  }
+}
+
+async function uploadPdfToMondayItem(itemId, pdfBuffer, docNumber) {
+  const token = process.env.MONDAY_API_TOKEN;
+  if (!token || !itemId || !pdfBuffer) return;
+  try {
+    const filename = `cotizacion-${docNumber}.pdf`;
+    const query    = `mutation ($file: File!) { add_file_to_column(item_id: ${itemId}, column_id: "${COL_PDF}", file: $file) { id } }`;
+    const formData = new FormData();
+    formData.append('query', query);
+    formData.append('variables[file]', new Blob([pdfBuffer], { type: 'application/pdf' }), filename);
+    const res = await fetch('https://api.monday.com/v2/file', {
+      method:  'POST',
+      headers: { Authorization: token },
+      body:    formData,
+    });
+    const data = await res.json();
+    if (data.errors?.length) throw new Error(data.errors[0].message);
+    console.log(`[Monday] PDF subido al item ${itemId}`);
+  } catch (e) {
+    console.warn('[Monday] No se pudo subir PDF:', e.message);
   }
 }
 
@@ -353,13 +381,14 @@ router.post('/generate', requireEditor, async (req, res) => {
   const seqRow = await query(`SELECT nextval('doc_number_seq') AS n`);
   const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
 
-  // 6. Crear item en Monday (board de cotizaciones) — no bloquea si falla
+  // 6. Crear item en Monday con columnas rellenas — no bloquea si falla
   const clientName = filled_data?.razon_social || filled_data?.nombre || filled_data?.name || '';
   const mondayDocItemId = await createMondayDocItem({
     docNumber,
-    docName:    name,
+    docName:      name,
     clientName,
-    html:       filledHtml,
+    html:         filledHtml,
+    mondayUserId: userId,
   });
 
   // 7. La URL del PDF apunta a la API (sirve desde DB)
@@ -387,9 +416,14 @@ router.post('/generate', requireEditor, async (req, res) => {
     documentId: doc.id,
     action:     'document.created',
     actor:      { id: userId },
-    pdfHash:    hashPdfFile(pdfUrl),
+    pdfHash:    hashPdfFile(apiPdfUrl),
     metadata:   { template_id, name, monday_item_id, monday_doc_item_id: mondayDocItemId },
   });
+
+  // Subir PDF al item de Monday en background — no bloquea la respuesta
+  if (mondayDocItemId) {
+    uploadPdfToMondayItem(mondayDocItemId, pdfBuffer, docNumber).catch(() => {});
+  }
 
   res.status(201).json(doc);
 });
