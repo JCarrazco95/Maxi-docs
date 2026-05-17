@@ -11,7 +11,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 // ── Utilidades ───────────────────────────────────────────────────
 function resolvePdfUrl(url) {
   if (!url) return null
-  if (url.startsWith('http://localhost:3001')) return url.replace('http://localhost:3001', '')
+  if (url.startsWith('http://localhost')) {
+    try { return new URL(url).pathname } catch { return url }
+  }
+  if (url.includes('railway.app')) {
+    try { return new URL(url).pathname } catch { return url }
+  }
   return url
 }
 

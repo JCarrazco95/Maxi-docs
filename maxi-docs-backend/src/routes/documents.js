@@ -203,6 +203,24 @@ router.get('/', async (req, res) => {
   res.json(result.rows);
 });
 
+// GET /api/documents/:id/pdf — sirve el PDF desde PostgreSQL
+router.get('/:id/pdf', async (req, res) => {
+  const result = await query(
+    `SELECT name, signed_pdf_content, pdf_content FROM documents WHERE id = $1`,
+    [req.params.id]
+  );
+  const doc = result.rows[0];
+  if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
+
+  const content = doc.signed_pdf_content || doc.pdf_content;
+  if (!content) return res.status(404).send('PDF no disponible aún');
+
+  const filename = `${(doc.name || 'documento').replace(/[^a-z0-9]/gi, '_')}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(content);
+});
+
 // GET /api/documents/:id — detalle de un documento
 router.get('/:id', async (req, res) => {
   const { accountId } = req.mondayContext;
@@ -285,18 +303,22 @@ router.post('/generate', requireEditor, async (req, res) => {
   // 6. Crear item en Monday (board de cotizaciones) — no bloquea si falla
   const mondayDocItemId = await createMondayDocItem({ docNumber, docName: name, ownerName: owner_name, pdfUrl });
 
-  // 7. Guardar documento en la base de datos
+  // 7. La URL del PDF apunta a la API (sirve desde DB)
+  const apiPdfUrl = `/api/documents/${documentId}/pdf`;
+
+  // 8. Guardar documento en la base de datos
   const result = await query(
     `INSERT INTO documents
        (id, template_id, name, doc_number, monday_board_id, monday_item_id, monday_account_id,
-        monday_user_id, owner_email, owner_name, monday_doc_item_id, filled_data, content_html, pdf_url, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft')
+        monday_user_id, owner_email, owner_name, monday_doc_item_id,
+        filled_data, content_html, pdf_url, pdf_content, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'draft')
      RETURNING *`,
     [
       documentId, template_id, name, docNumber,
       monday_board_id, monday_item_id, accountId,
       userId, owner_email || null, owner_name || null, mondayDocItemId,
-      JSON.stringify(filled_data), filledHtml, pdfUrl,
+      JSON.stringify(filled_data), filledHtml, apiPdfUrl, pdfBuffer,
     ]
   );
 

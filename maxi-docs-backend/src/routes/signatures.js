@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db/connection.js';
 import { sendSignatureRequest, sendSignedNotification, sendViewedNotification } from '../services/emailService.js';
-import { embedSignaturesInPdf, saveSignedPdf } from '../services/selfSignService.js';
+import { embedSignaturesInPdf, saveSignedPdfLocal } from '../services/selfSignService.js';
 import { logEvent, hashPdfFile, hashBuffer } from '../services/auditService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 
@@ -215,8 +215,8 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
   if (!signatureDataUrl) return res.status(400).json({ error: 'Se requiere la imagen de la firma' });
 
   const sigRes = await query(
-    `SELECT s.*, d.pdf_url, d.name AS document_name, d.id AS document_id, d.monday_account_id,
-            d.owner_email, s.signing_order
+    `SELECT s.*, d.pdf_url, d.pdf_content, d.name AS document_name, d.id AS document_id,
+            d.monday_account_id, d.owner_email, s.signing_order
      FROM signatures s JOIN documents d ON d.id = s.document_id
      WHERE s.id = $1`,
     [signatureId]
@@ -260,8 +260,9 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
     }];
   }
 
-  // Embeber firma en el PDF
-  const signedBuffer = await embedSignaturesInPdf(sig.pdf_url, [{
+  // Embeber firma en el PDF — usar contenido de DB si está disponible, si no fetch por URL
+  const pdfSource = sig.pdf_content ? Buffer.from(sig.pdf_content) : sig.pdf_url;
+  const signedBuffer = await embedSignaturesInPdf(pdfSource, [{
     name:             sig.signer_name,
     email:            sig.signer_email,
     signatureDataUrl,
@@ -270,16 +271,19 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
     fieldConfig,
   }]);
 
-  const signedPdfUrl = saveSignedPdf(sig.pdf_url, signedBuffer);
   const signedPdfHash = hashBuffer(signedBuffer);
+  const signedPdfUrl  = `/api/documents/${sig.document_id}/pdf`;
+
+  // Guardar PDF firmado en PostgreSQL (persistente) y opcionalmente en filesystem
+  await query(
+    `UPDATE documents SET signed_pdf_content = $1, pdf_hash = $2, status = 'signed' WHERE id = $3`,
+    [signedBuffer, signedPdfHash, sig.document_id]
+  );
+  saveSignedPdfLocal(sig.document_id, signedBuffer);
 
   await query(
     `UPDATE signatures SET status = 'signed', signed_at = NOW() WHERE id = $1`,
     [signatureId]
-  );
-  await query(
-    `UPDATE documents SET pdf_url = $1, pdf_hash = $2, status = 'signed' WHERE id = $3`,
-    [signedPdfUrl, signedPdfHash, sig.document_id]
   );
 
   // Audit: firmante completó

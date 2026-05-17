@@ -35,15 +35,15 @@ const PUBLIC_URL = process.env.R2_PUBLIC_URL;
  */
 export async function uploadPdf(key, buffer) {
   if (!R2_CONFIGURED) {
-    // Guardar localmente en /uploads y servir por Express
-    const uploadsDir = join(__dirname, '../../uploads/documents');
-    mkdirSync(uploadsDir, { recursive: true });
-    const filename = key.split('/').pop();
-    writeFileSync(join(uploadsDir, filename), buffer);
-    // En producción usar PUBLIC_URL para que la URL sea accesible desde el browser
-    const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
-    console.log(`[Storage] PDF guardado localmente: uploads/documents/${filename}`);
-    return `${base}/uploads/documents/${filename}`;
+    // Sin R2: guardar también en filesystem local como caché (no es la fuente de verdad)
+    try {
+      const uploadsDir = join(__dirname, '../../uploads/documents');
+      mkdirSync(uploadsDir, { recursive: true });
+      const filename = key.split('/').pop();
+      writeFileSync(join(uploadsDir, filename), buffer);
+    } catch { /* ignorar errores de filesystem en prod */ }
+    // Devolver null — el caller guardará en DB y usará la URL de la API
+    return null;
   }
 
   await s3.send(

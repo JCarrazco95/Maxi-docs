@@ -3,7 +3,7 @@
  * Embebe la firma dibujada directamente en el PDF usando pdf-lib
  */
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { readFileSync, writeFileSync } from 'fs';
+import { writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -18,11 +18,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  *                           fieldConfig:      [{ type, x, y, w, h, page }] en %
  * @returns {Buffer}  PDF firmado con certificado al final
  */
-export async function embedSignaturesInPdf(pdfUrl, signers) {
-  // Leer PDF original
-  const filename  = pdfUrl.split('/').pop();
-  const pdfPath   = join(__dirname, '../../uploads/documents', filename);
-  const pdfBytes  = readFileSync(pdfPath);
+export async function embedSignaturesInPdf(pdfSource, signers) {
+  // pdfSource puede ser un Buffer (desde DB) o una URL
+  let pdfBytes;
+  if (Buffer.isBuffer(pdfSource)) {
+    pdfBytes = pdfSource;
+  } else {
+    // Intentar leer desde URL (R2 o filesystem local)
+    try {
+      const resp = await fetch(pdfSource);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      pdfBytes = Buffer.from(await resp.arrayBuffer());
+    } catch {
+      // Fallback: leer desde filesystem local
+      const filename = pdfSource.split('/').pop();
+      const pdfPath  = join(__dirname, '../../uploads/documents', filename);
+      const { readFileSync } = await import('fs');
+      pdfBytes = readFileSync(pdfPath);
+    }
+  }
 
   const pdfDoc   = await PDFDocument.load(pdfBytes);
   const pages    = pdfDoc.getPages();
@@ -123,15 +137,13 @@ export async function embedSignaturesInPdf(pdfUrl, signers) {
 }
 
 /**
- * Guarda el PDF firmado sobreescribiendo el original o con nuevo nombre.
+ * Guarda el PDF firmado en filesystem local (solo como caché, no es la fuente de verdad).
+ * En producción la fuente de verdad es la columna signed_pdf_content en PostgreSQL.
  */
-export function saveSignedPdf(pdfUrl, buffer) {
-  const filename = pdfUrl.split('/').pop().replace('.pdf', '_firmado.pdf');
-  const outPath  = join(__dirname, '../../uploads/documents', filename);
-  writeFileSync(outPath, buffer);
-  // Usar PUBLIC_URL si está configurado; de lo contrario, URL local
-  const base = process.env.PUBLIC_URL
-    ? process.env.PUBLIC_URL.replace(/\/$/, '')
-    : `http://localhost:${process.env.PORT || 3001}`;
-  return `${base}/uploads/documents/${filename}`;
+export function saveSignedPdfLocal(documentId, buffer) {
+  try {
+    const filename = `${documentId}_firmado.pdf`;
+    const outPath  = join(__dirname, '../../uploads/documents', filename);
+    writeFileSync(outPath, buffer);
+  } catch { /* ignorar en prod */ }
 }
