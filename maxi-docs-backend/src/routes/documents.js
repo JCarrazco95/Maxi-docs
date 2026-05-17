@@ -70,7 +70,7 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
       [COL_CLIENTE]:       client,
       [COL_MONTO_TOTAL]:   String(computed),
       [COL_FECHA_EMISION]: { date: today },
-      [COL_ESTADO]:        { label: 'En Proceso' },
+      [COL_ESTADO]:        { label: 'En Revisión' },
     };
 
     if (mondayUserId && mondayUserId !== 'dev') {
