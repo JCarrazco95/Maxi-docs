@@ -483,11 +483,13 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
       })
     } catch {}
 
-    // TARIFAS: subtotal = renta mensual + deducible (sin IVA)
+    // TARIFAS: renta mensual + deducible + entrega + recolección
     const totalTarifas = tarifasItems.reduce((s, i) => {
-      const mensual  = (Number(i.dailyRate)||0) * 30 * (Number(i.quantity)||1)
-      const deduc    = Number(i.deductible) || 0
-      return s + mensual * (1 + deduc / 100)
+      const mensual   = (Number(i.dailyRate)||0) * 30 * (Number(i.quantity)||1)
+      const deduc     = Number(i.deductible) || 0
+      const delivery  = Number(i.delivery)  || 0
+      const retrieval = Number(i.retrieval) || 0
+      return s + mensual * (1 + deduc / 100) + delivery + retrieval
     }, 0)
     // ADECUACIONES: subtotal sin IVA
     const totalAcc  = accItems.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||1), 0)
@@ -527,9 +529,11 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
 
           {/* Una fila por cada item de TARIFAS (subtotal = renta + deducible, sin IVA) */}
           {tarifasItems.map((item, i) => {
-            const mensual  = (Number(item.dailyRate)||0) * 30 * (Number(item.quantity)||1)
-            const deduc    = Number(item.deductible) || 0
-            const conDeduc = mensual * (1 + deduc / 100)
+            const mensual   = (Number(item.dailyRate)||0) * 30 * (Number(item.quantity)||1)
+            const deduc     = Number(item.deductible) || 0
+            const delivery  = Number(item.delivery)  || 0
+            const retrieval = Number(item.retrieval) || 0
+            const conDeduc  = mensual * (1 + deduc / 100) + delivery + retrieval
             return (
               <div key={i} className="pt-row" style={{ gridTemplateColumns: '1fr 130px 130px 130px' }}>
                 <div className="pt-c-name" style={{ pointerEvents:'none', fontSize:12 }}>

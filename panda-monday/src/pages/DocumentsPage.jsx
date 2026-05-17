@@ -15,8 +15,11 @@ const STATUS_LABELS = {
 
 function resolvePdfUrl(url) {
   if (!url) return null
-  if (url.startsWith('http://localhost:3001')) {
-    return url.replace('http://localhost:3001', '')
+  if (url.startsWith('http://localhost')) {
+    try { return new URL(url).pathname } catch { return url }
+  }
+  if (url.includes('railway.app')) {
+    try { return new URL(url).pathname } catch { return url }
   }
   return url
 }
@@ -324,11 +327,7 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
                   </td>
                   {isAdmin && (
                     <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      {doc.monday_user_id
-                        ? (String(doc.monday_user_id) === String(userId)
-                            ? (userName ?? doc.monday_user_id)
-                            : `ID: ${doc.monday_user_id}`)
-                        : '—'}
+                      {doc.owner_name ?? (String(doc.monday_user_id) === String(userId) ? userName : null) ?? doc.monday_user_id ?? '—'}
                     </td>
                   )}
                   <td>
@@ -364,6 +363,16 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
                         >
                           <IconSend /> Enviar a firma
                         </button>
+                      )}
+                      {doc.pdf_url && (
+                        <a
+                          className="btn btn-secondary btn-sm btn-icon"
+                          href={resolvePdfUrl(doc.pdf_url)}
+                          download
+                          title="Descargar PDF"
+                        >
+                          <IconDownload />
+                        </a>
                       )}
                       <button
                         className="btn btn-danger btn-sm btn-icon"

@@ -57,21 +57,22 @@ function StatCard({ icon, label, value, color, trend }) {
   )
 }
 
-export default function DashboardPage({ isAdmin, userName }) {
+export default function DashboardPage({ isAdmin, userName, itemId }) {
   const [stats, setStats]   = useState(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await api.get('/api/documents/stats')
+      const params = itemId ? { monday_item_id: String(itemId) } : {}
+      const res = await api.get('/api/documents/stats', { params })
       setStats(res.data)
     } catch {
       setStats(null)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [itemId])
 
   useEffect(() => { load() }, [load])
 
@@ -88,7 +89,9 @@ export default function DashboardPage({ isAdmin, userName }) {
         <div>
           <div className="page-title">Dashboard</div>
           <div className="page-subtitle">
-            {isAdmin ? 'Resumen de toda la cuenta' : `Tus documentos, ${userName ?? ''}`}
+            {itemId
+              ? `Documentos del contacto #${itemId}`
+              : isAdmin ? 'Resumen de toda la cuenta' : `Tus documentos, ${userName ?? ''}`}
           </div>
         </div>
         <button className="btn btn-secondary" onClick={load} disabled={loading}>

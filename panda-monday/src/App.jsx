@@ -118,7 +118,7 @@ export default function App() {
 
       <div className="tab-content">
         {activeTab === 'dashboard' && (
-          <DashboardPage isAdmin={isAdmin} userName={userName} />
+          <DashboardPage isAdmin={isAdmin} userName={userName} itemId={itemId} />
         )}
         {activeTab === 'templates' && <TemplatesPage />}
         {activeTab === 'documents' && (

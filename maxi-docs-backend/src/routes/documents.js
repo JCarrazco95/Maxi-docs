@@ -23,14 +23,17 @@ router.post('/preview', (req, res) => {
 // GET /api/documents/stats — resumen de KPIs por cuenta
 router.get('/stats', async (req, res) => {
   const { accountId, userId, isAdmin } = req.mondayContext;
+  const { monday_item_id } = req.query;
 
-  // Filtros con alias de tabla explícito para evitar ambigüedad en JOINs
+  const itemCond   = monday_item_id ? ` AND monday_item_id = '${monday_item_id}'` : '';
+  const itemCondD  = monday_item_id ? ` AND d.monday_item_id = '${monday_item_id}'` : '';
+
   const docFilter = isAdmin
-    ? `d.monday_account_id = $1`
-    : `d.monday_account_id = $1 AND d.monday_user_id = $2`;
+    ? `d.monday_account_id = $1${itemCondD}`
+    : `d.monday_account_id = $1 AND d.monday_user_id = $2${itemCondD}`;
   const simpleFilter = isAdmin
-    ? `monday_account_id = $1`
-    : `monday_account_id = $1 AND monday_user_id = $2`;
+    ? `monday_account_id = $1${itemCond}`
+    : `monday_account_id = $1 AND monday_user_id = $2${itemCond}`;
   const params = isAdmin ? [accountId] : [accountId, userId];
 
   const [counts, recent, byTemplate, timingRow, overdueRow, periodRows] = await Promise.all([
@@ -158,7 +161,8 @@ router.get('/', async (req, res) => {
   }
 
   const result = await query(
-    `SELECT id, name, template_id, monday_item_id, monday_user_id, status, pdf_url, created_at, updated_at
+    `SELECT id, name, doc_number, template_id, monday_item_id, monday_user_id,
+            owner_name, owner_email, status, pdf_url, created_at, updated_at
      FROM documents
      WHERE ${conditions.join(' AND ')}
      ORDER BY updated_at DESC`,
@@ -198,7 +202,8 @@ router.post('/generate', requireEditor, async (req, res) => {
     catalog_items = [],
     catalog_iva = 16,
     content_html,
-    owner_email,    // Email del vendedor — se usa para notificaciones de firma
+    owner_email,
+    owner_name,     // Nombre del vendedor — se muestra en la lista de documentos
   } = req.body;
 
   if (!name) {
@@ -249,13 +254,13 @@ router.post('/generate', requireEditor, async (req, res) => {
   const result = await query(
     `INSERT INTO documents
        (id, template_id, name, doc_number, monday_board_id, monday_item_id, monday_account_id,
-        monday_user_id, owner_email, filled_data, content_html, pdf_url, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft')
+        monday_user_id, owner_email, owner_name, filled_data, content_html, pdf_url, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'draft')
      RETURNING *`,
     [
       documentId, template_id, name, docNumber,
       monday_board_id, monday_item_id, accountId,
-      userId, owner_email || null, JSON.stringify(filled_data), filledHtml, pdfUrl,
+      userId, owner_email || null, owner_name || null, JSON.stringify(filled_data), filledHtml, pdfUrl,
     ]
   );
 

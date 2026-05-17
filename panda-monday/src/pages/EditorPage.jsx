@@ -157,8 +157,9 @@ export default function EditorPage() {
   const [sendingSign,    setSendingSign]    = useState(false)
   const [signError,      setSignError]      = useState(null)
 
-  // Email del vendedor (para notificaciones de firma)
+  // Email y nombre del vendedor (para notificaciones y lista de documentos)
   const [ownerEmail, setOwnerEmail] = useState(null)
+  const [ownerName,  setOwnerName]  = useState(null)
 
   // Vars de Monday pendientes de aplicar al editor (se aplican cuando el editor esté listo)
   const [pendingMondayVars, setPendingMondayVars] = useState(null)
@@ -248,7 +249,10 @@ export default function EditorPage() {
         const filled = applyVars(tpl.content_html ?? '', fieldValues)
         setSession({ templateId: tpl.id, templateHtml: tpl.content_html, boardId, itemId, accountId, userId, isAdmin })
         // Obtener email del vendedor para notificaciones de firma
-        api.get('/api/monday/me').then(r => { if (r.data.email) setOwnerEmail(r.data.email) }).catch(() => {})
+        api.get('/api/monday/me').then(r => {
+          if (r.data.email) setOwnerEmail(r.data.email)
+          if (r.data.name)  setOwnerName(r.data.name)
+        }).catch(() => {})
         setDocName(docNameDecoded)
         setTplCss(css)
         setEditorHtml(filled)
@@ -370,6 +374,7 @@ export default function EditorPage() {
         content_html:    finalHtml,
         filled_data:     varValues,
         owner_email:     ownerEmail || undefined,
+        owner_name:      ownerName  || undefined,
       })
       setGeneratedDocId(res.data.id)
       setGeneratedPdfUrl(res.data.pdf_url)
@@ -454,6 +459,7 @@ export default function EditorPage() {
         content_html:    finalHtml,
         filled_data:     varValues,
         owner_email:     ownerEmail || undefined,
+        owner_name:      ownerName  || undefined,
       })
       setGeneratedDocId(res.data.id)
       setGeneratedPdfUrl(res.data.pdf_url)
