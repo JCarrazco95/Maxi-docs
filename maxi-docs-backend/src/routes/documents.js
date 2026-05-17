@@ -26,14 +26,15 @@ function extractPricingTotal(html) {
   let total = 0;
   const re = /<pricing-table([^>]*)>/g;
   let m;
+  let subtotalTarifas = 0;
+  let subtotalAcc     = 0;
+
   while ((m = re.exec(html)) !== null) {
     const attrs     = m[1];
     const typeMatch = attrs.match(/data-table-type="([^"]*)"/);
     const b64Match  = attrs.match(/data-items-b64="([^"]*)"/);
-    const ivaMatch  = attrs.match(/data-iva-rate="([^"]*)"/);
     if (!b64Match || !typeMatch) continue;
     const tableType = typeMatch[1];
-    const ivaRate   = parseFloat(ivaMatch?.[1] ?? 0) / 100;
     try {
       const items = JSON.parse(Buffer.from(b64Match[1], 'base64').toString('utf8'));
       for (const i of items) {
@@ -43,14 +44,16 @@ function extractPricingTotal(html) {
           const deduc     = (Number(i.deductible) || 0) / 100;
           const delivery  = Number(i.delivery)  || 0;
           const retrieval = Number(i.retrieval) || 0;
-          total += mensual * (1 + deduc) + delivery + retrieval;
+          subtotalTarifas += mensual * (1 + deduc) + delivery + retrieval;
         } else if (tableType === 'accesorios') {
-          const subtotal = (Number(i.price) || 0) * qty;
-          total += subtotal * (1 + ivaRate);
+          subtotalAcc += (Number(i.price) || 0) * qty;
         }
       }
     } catch { /* ignorar items corruptos */ }
   }
+
+  // Total = (tarifas + adecuaciones) + 16% IVA
+  total = (subtotalTarifas + subtotalAcc) * 1.16;
   return Math.round(total);
 }
 
