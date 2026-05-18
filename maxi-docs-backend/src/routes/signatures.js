@@ -34,6 +34,13 @@ async function mondayGql(query, token) {
 async function crearOportunidadEnMonday({ document, userId }) {
   const token = process.env.MONDAY_API_TOKEN;
   if (!token) return;
+
+  // Si ya tiene item en Monday (creado al guardar PDF), no duplicar
+  if (document.monday_doc_item_id) {
+    console.log(`[Monday] Item ya existe: ${document.monday_doc_item_id}, sin duplicar`);
+    return;
+  }
+
   try {
     const filled  = typeof document.filled_data === 'string'
       ? JSON.parse(document.filled_data) : (document.filled_data ?? {});
@@ -153,7 +160,7 @@ router.post('/send', requireEditor, async (req, res) => {
   // Buscar por ID primero; verificar cuenta solo si no es admin
   // (evita condición de carrera donde el contexto de Monday no cargó aún)
   const docResult = await query(
-    `SELECT *, pdf_content, filled_data, doc_number FROM documents WHERE id = $1`,
+    `SELECT *, pdf_content, filled_data, doc_number, monday_doc_item_id FROM documents WHERE id = $1`,
     [document_id]
   );
   const document = docResult.rows[0];
