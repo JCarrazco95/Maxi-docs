@@ -39,7 +39,7 @@ const SEED_TEMPLATES = [
     <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{name}}</p>
   </div>
   <div style="text-align:right;">
-    <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{Fecha_creación}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{fecha}}</p>
     <p style="margin:3px 0;"><span class="mr-bold">Fecha de vigencia </span>{{fecha_vigencia}}</p>
   </div>
 </div>
