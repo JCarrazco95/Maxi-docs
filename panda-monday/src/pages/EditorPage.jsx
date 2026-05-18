@@ -248,10 +248,36 @@ export default function EditorPage() {
         const css = cssMatch?.[1] ?? ''
         const filled = applyVars(tpl.content_html ?? '', fieldValues)
         setSession({ templateId: tpl.id, templateHtml: tpl.content_html, boardId, itemId, accountId, userId, isAdmin })
-        // Obtener email del vendedor para notificaciones de firma
+        // Obtener datos del vendedor desde Monday y auto-rellenar variables
         api.get('/api/monday/me').then(r => {
           if (r.data.email) setOwnerEmail(r.data.email)
           if (r.data.name)  setOwnerName(r.data.name)
+
+          // Calcular fecha de creación y vigencia (15 días hábiles)
+          const hoy = new Date()
+          const fmtDate = d => d.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
+          let diasHabiles = 0, vigencia = new Date(hoy)
+          while (diasHabiles < 15) {
+            vigencia.setDate(vigencia.getDate() + 1)
+            const dia = vigencia.getDay()
+            if (dia !== 0 && dia !== 6) diasHabiles++
+          }
+
+          // Variables automáticas del vendedor + fechas
+          const autoVars = {
+            ejecutivo:          r.data.name  ?? '',
+            correo_electronico: r.data.email ?? '',
+            telefono:           r.data.phone ?? '',
+            Fecha_creación:     fmtDate(hoy),
+            fecha:              fmtDate(hoy),
+            fecha_vigencia:     fmtDate(vigencia),
+          }
+
+          setVarValues(prev => {
+            const merged = { ...autoVars, ...prev }
+            setPendingMondayVars(merged)
+            return merged
+          })
         }).catch(() => {})
         setDocName(docNameDecoded)
         setTplCss(css)

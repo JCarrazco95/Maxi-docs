@@ -98,8 +98,15 @@ router.put('/:id', async (req, res) => {
 router.post('/seed', async (req, res) => {
   const { accountId, userId } = req.mondayContext;
 
+  // Renombrar v2 → sin v2 si existe
+  await query(
+    `UPDATE templates SET name = 'Propuesta Comercial MAXIRent'
+     WHERE monday_account_id = $1 AND name = 'Propuesta Comercial MAXIRent v2'`,
+    [accountId]
+  );
+
   const exists = await query(
-    `SELECT id FROM templates WHERE monday_account_id = $1 AND name = 'Propuesta Comercial MAXIRent v2'`,
+    `SELECT id FROM templates WHERE monday_account_id = $1 AND name = 'Propuesta Comercial MAXIRent'`,
     [accountId]
   );
   if (exists.rows.length > 0) {

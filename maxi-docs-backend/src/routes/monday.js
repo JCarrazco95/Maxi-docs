@@ -199,10 +199,18 @@ router.get('/me', async (req, res) => {
         id
         name
         email
+        phone
+        title
       }
     }`);
     const user = data?.users?.[0];
-    res.json({ email: user?.email ?? null, name: user?.name ?? null, id: user?.id ?? null });
+    res.json({
+      email: user?.email ?? null,
+      name:  user?.name  ?? null,
+      phone: user?.phone ?? null,
+      title: user?.title ?? null,
+      id:    user?.id    ?? null,
+    });
   } catch (e) {
     res.json({ email: null, name: null, error: e.message });
   }

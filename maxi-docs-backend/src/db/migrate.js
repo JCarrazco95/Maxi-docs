@@ -8,9 +8,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const SEED_TEMPLATES = [
   {
-    name: 'Propuesta Comercial MAXIRent v2',
+    name: 'Propuesta Comercial MAXIRent',
     description: 'Plantilla oficial MAXIRent — TARIFAS, ADECUACIONES y VALOR DEL ACUERDO',
-    variables: JSON.stringify(['razon_social','representante','fecha','fecha_vigencia','telefono','correo_electronico']),
+    variables: JSON.stringify(['name','ejecutivo','Fecha_creación','fecha_vigencia','telefono','correo_electronico']),
     content_html: `<style>
   .mr, .mr * { box-sizing: border-box; }
   .mr img { width:100%; display:block; }
@@ -28,7 +28,6 @@ const SEED_TEMPLATES = [
   .mr-check { list-style:none; padding:0; margin:4px 0 10px; font-size:9pt; }
   .mr-check li::before { content:"✓ "; color:#1B3055; font-weight:700; }
   .mr-rep { text-align:right; margin-top:20px; font-size:9.5pt; line-height:1.7; }
-  .mr-tag { background:#F5A000; color:white; font-weight:900; font-size:9pt; display:inline-block; padding:3px 8px; border-radius:3px; }
   .pt-header { background:#F5A000 !important; }
   .pt-header .pt-title { color:white !important; }
 </style>
@@ -36,11 +35,11 @@ const SEED_TEMPLATES = [
 <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-01.png" style="width:100%;display:block;margin-bottom:2px;" />
 <div class="mr-header-info">
   <div>
-    <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{razon_social}}</p>
-    <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{representante}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{name}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{name}}</p>
   </div>
   <div style="text-align:right;">
-    <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{fecha}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{Fecha_creación}}</p>
     <p style="margin:3px 0;"><span class="mr-bold">Fecha de vigencia </span>{{fecha_vigencia}}</p>
   </div>
 </div>
@@ -69,7 +68,7 @@ const SEED_TEMPLATES = [
   <li>Solicitud de renta y CARTACOBERTURA firmadas por representante legal</li>
 </ul>
 <div class="mr-firma-box"></div>
-<p class="mr-nota">**Nota: La firma de la presente propuesta no implica compromiso de compra. Vigencia 15 días.</p>
+<p class="mr-nota">**Nota: La firma de la presente propuesta no implica compromiso de compra. Vigencia 15 días hábiles.</p>
 <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" style="width:100%;display:block;margin-top:20px;" />
 <div style="page-break-before:always;page-break-after:always;">
 <h3 class="mr-h3">Requisitos para entrega de unidades</h3>
@@ -85,7 +84,7 @@ const SEED_TEMPLATES = [
   <li>Cambio llantas sin costo llegando a los 60,000 km</li>
   <li>Mantenimientos correctivos y preventivos</li>
   <li>Seguro de auto con cobertura a terceros</li>
-  <li>GPS en cada vehículo</li>
+  <li>GPS en cada vehículo con cuenta espejo</li>
 </ul>
 <h3 class="mr-h3">Beneficios para su empresa</h3>
 <ul class="mr-check">
@@ -95,7 +94,7 @@ const SEED_TEMPLATES = [
   <li><strong style="color:#1B3055;">Control</strong> y visibilidad total de sus operadores</li>
 </ul>
 <div class="mr-rep">
-  <p style="margin:2px 0;font-weight:700;">{{representante}}</p>
+  <p style="margin:2px 0;font-weight:700;">{{ejecutivo}}</p>
   <p style="margin:2px 0;">Ejecutivo Comercial</p>
   <p style="margin:2px 0;">{{telefono}}</p>
   <p style="margin:2px 0;">{{correo_electronico}}</p>
