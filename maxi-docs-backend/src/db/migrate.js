@@ -35,7 +35,7 @@ const SEED_TEMPLATES = [
 <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-01.png" style="width:100%;display:block;margin-bottom:2px;" />
 <div class="mr-header-info">
   <div>
-    <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{name}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{razon_social}}</p>
     <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{name}}</p>
   </div>
   <div style="text-align:right;">
