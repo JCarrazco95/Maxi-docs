@@ -94,16 +94,26 @@ router.put('/:id', async (req, res) => {
   res.json(tpl);
 });
 
-// POST /api/templates/seed — crea la plantilla v2 directamente para la cuenta actual
+// POST /api/templates/seed — crea o actualiza la plantilla MAXIRent (idempotente)
 router.post('/seed', async (req, res) => {
   const { accountId, userId } = req.mondayContext;
+  const TPL_NAME = 'Propuesta Comercial MAXIRent';
 
-  // Renombrar v2 → sin v2 si existe y actualizar contenido
+  // Renombrar v2 → sin v2
   await query(
-    `UPDATE templates SET name = 'Propuesta Comercial MAXIRent'
-     WHERE monday_account_id = $1 AND name = 'Propuesta Comercial MAXIRent v2'`,
-    [accountId]
-  );
+    `UPDATE templates SET name = $1 WHERE monday_account_id = $2 AND name = 'Propuesta Comercial MAXIRent v2'`,
+    [TPL_NAME, accountId]
+  ).catch(() => {});
+
+  // Eliminar duplicados — dejar solo el más reciente
+  await query(
+    `DELETE FROM templates WHERE monday_account_id = $1 AND name = $2
+     AND id NOT IN (
+       SELECT id FROM templates WHERE monday_account_id = $1 AND name = $2
+       ORDER BY created_at DESC LIMIT 1
+     )`,
+    [accountId, TPL_NAME]
+  ).catch(() => {});
 
   const content_html = `<style>
   .mr, .mr * { box-sizing: border-box; }
@@ -133,7 +143,7 @@ router.post('/seed', async (req, res) => {
     <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{name}}</p>
   </div>
   <div style="text-align:right;">
-    <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{fecha}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{Fecha_creación}}</p>
     <p style="margin:3px 0;"><span class="mr-bold">Fecha de vigencia </span>{{fecha_vigencia}}</p>
   </div>
 </div>
@@ -185,24 +195,35 @@ router.post('/seed', async (req, res) => {
 </div>`;
 
   const variables = extractVariables(content_html);
-  const result = await query(
-    `INSERT INTO templates (name, description, content_html, variables, monday_user_id, monday_account_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT DO NOTHING
-     RETURNING *`,
-    ['Propuesta Comercial MAXIRent', 'Plantilla oficial MAXIRent — TARIFAS, ADECUACIONES y VALOR DEL ACUERDO',
-     content_html, JSON.stringify(variables), userId, accountId]
+  const desc = 'Plantilla oficial MAXIRent — TARIFAS, ADECUACIONES y VALOR DEL ACUERDO';
+
+  // Verificar si ya existe
+  const existing = await query(
+    `SELECT id FROM templates WHERE monday_account_id = $1 AND name = $2`,
+    [accountId, TPL_NAME]
   );
 
-  // Si ya existía, actualizar el contenido con las variables nuevas
-  await query(
-    `UPDATE templates SET content_html = $1, variables = $2, updated_at = NOW()
-     WHERE monday_account_id = $3 AND name = 'Propuesta Comercial MAXIRent'`,
-    [content_html, JSON.stringify(variables), accountId]
-  );
-  const tpl = result.rows[0];
-  scheduleThumbnail(tpl.id, content_html);
-  res.json({ seeded: 1, template: tpl, message: 'Plantilla creada correctamente' });
+  let tpl;
+  if (existing.rows.length > 0) {
+    // Actualizar contenido
+    const upd = await query(
+      `UPDATE templates SET content_html = $1, variables = $2, description = $3, updated_at = NOW()
+       WHERE id = $4 RETURNING *`,
+      [content_html, JSON.stringify(variables), desc, existing.rows[0].id]
+    );
+    tpl = upd.rows[0];
+  } else {
+    // Insertar nueva
+    const ins = await query(
+      `INSERT INTO templates (name, description, content_html, variables, monday_user_id, monday_account_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [TPL_NAME, desc, content_html, JSON.stringify(variables), userId, accountId]
+    );
+    tpl = ins.rows[0];
+  }
+
+  if (tpl) scheduleThumbnail(tpl.id, content_html);
+  res.json({ ok: true, message: 'Plantilla actualizada' });
 });
 
 // POST /api/templates/migrate-dev — copia las plantillas de 'dev' a la cuenta real

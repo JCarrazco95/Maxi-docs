@@ -84,7 +84,7 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
   console.log(`[Monday] createMondayDocItem iniciando — token: ${token ? '✅ presente' : '❌ AUSENTE'} | userId: ${mondayUserId}`);
   if (!token) return null;
   try {
-    const itemName  = `${docNumber} | ${docName}`;
+    const itemName  = client ? `${client} / Propuesta Comercial` : `${docNumber} | ${docName}`;
     const today     = new Date().toISOString().split('T')[0];
     const computed  = totalAmount ?? extractPricingTotal(html);
     const client    = clientName ?? '';
