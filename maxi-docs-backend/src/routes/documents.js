@@ -414,7 +414,7 @@ router.post('/generate', requireEditor, async (req, res) => {
   const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
 
   // 6. Crear item en Monday con columnas rellenas — no bloquea si falla
-  const clientName = filled_data?.razon_social || filled_data?.nombre || filled_data?.name || '';
+  const clientName = filled_data?.name || filled_data?.razon_social || filled_data?.nombre || '';
   const mondayDocItemId = await createMondayDocItem({
     docNumber,
     docName:      name,
