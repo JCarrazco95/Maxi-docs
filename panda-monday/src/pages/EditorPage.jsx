@@ -46,6 +46,7 @@ function mergePtItems(templateHtml, editorHtml) {
 // ── Abrir editor en pestaña nueva ────────────────────────────
 export function openEditorTab(data) {
   const params = new URLSearchParams()
+  if (data.documentId)  params.set('docId',   data.documentId)  // modo edición
   if (data.templateId)  params.set('tpl',     data.templateId)
   if (data.docName)     params.set('name',    encodeURIComponent(data.docName))
   if (data.itemId)      params.set('item',    String(data.itemId))
@@ -216,15 +217,43 @@ export default function EditorPage() {
 
   // ── Cargar sesión desde URL params ────────────────────────────
   useEffect(() => {
-    const params   = new URLSearchParams(window.location.search)
-    const tplId    = params.get('tpl')
-    const nameRaw  = params.get('name')
-    const itemId   = params.get('item')
-    const boardId  = params.get('board')
-    const accountId= params.get('account')
-    const userId   = params.get('user')
-    const isAdmin  = params.get('admin') === '1'
-    const fvRaw    = params.get('fv')
+    const params    = new URLSearchParams(window.location.search)
+    const docId     = params.get('docId')   // modo edición de documento existente
+    const tplId     = params.get('tpl')
+    const nameRaw   = params.get('name')
+    const itemId    = params.get('item')
+    const boardId   = params.get('board')
+    const accountId = params.get('account')
+    const userId    = params.get('user')
+    const isAdmin   = params.get('admin') === '1'
+    const fvRaw     = params.get('fv')
+
+    if (accountId && accountId !== 'null') {
+      updateMondayContext({ accountId, userId: userId || 'user', isAdmin })
+    }
+
+    // ── Modo edición: cargar documento existente ──────────────
+    if (docId) {
+      api.get(`/api/documents/${docId}`)
+        .then(res => {
+          const doc = res.data
+          const cssMatch = doc.content_html?.match(/<style>([\s\S]*?)<\/style>/i)
+          const css = cssMatch?.[1] ?? ''
+          setSession({ documentId: doc.id, templateId: doc.template_id, boardId, itemId, accountId, userId, isAdmin })
+          setDocName(doc.name)
+          setTplCss(css)
+          setEditorHtml(doc.content_html ?? '')
+          setCurrentHtml(doc.content_html ?? '')
+          const fv = typeof doc.filled_data === 'string' ? JSON.parse(doc.filled_data || '{}') : (doc.filled_data ?? {})
+          setVarValues(fv)
+          api.get('/api/monday/me').then(r => {
+            if (r.data.email) setOwnerEmail(r.data.email)
+            if (r.data.name)  setOwnerName(r.data.name)
+          }).catch(() => {})
+        })
+        .catch(e => setError(`No se pudo cargar el documento: ${e.message}`))
+      return
+    }
 
     if (!tplId) {
       setError('No se especificó una plantilla. Cierra esta pestaña y ábrela desde la app.')
@@ -388,16 +417,24 @@ export default function EditorPage() {
     try {
       const base      = session?.templateHtml ?? currentHtml
       const finalHtml = mergePtItems(base, currentHtml)
-      const res = await api.post('/api/documents/generate', {
-        template_id:     session?.templateId,
-        name:            docName,
-        monday_board_id: session?.boardId ? String(session.boardId) : undefined,
-        monday_item_id:  session?.itemId  ? String(session.itemId)  : undefined,
-        content_html:    finalHtml,
-        filled_data:     varValues,
-        owner_email:     ownerEmail || undefined,
-        owner_name:      ownerName  || undefined,
-      })
+
+      // Modo edición: regenerar documento existente
+      const res = session?.documentId
+        ? await api.put(`/api/documents/${session.documentId}/regenerate`, {
+            content_html: finalHtml,
+            filled_data:  varValues,
+          })
+        : await api.post('/api/documents/generate', {
+            template_id:     session?.templateId,
+            name:            docName,
+            monday_board_id: session?.boardId ? String(session.boardId) : undefined,
+            monday_item_id:  session?.itemId  ? String(session.itemId)  : undefined,
+            content_html:    finalHtml,
+            filled_data:     varValues,
+            owner_email:     ownerEmail || undefined,
+            owner_name:      ownerName  || undefined,
+          })
+
       setGeneratedDocId(res.data.id)
       setGeneratedPdfUrl(res.data.pdf_url)
       setGenerating(false)
@@ -473,16 +510,24 @@ export default function EditorPage() {
     try {
       const base      = session.templateHtml ?? currentHtml
       const finalHtml = mergePtItems(base, currentHtml)
-      const res = await api.post('/api/documents/generate', {
-        template_id:     session.templateId,
-        name:            docName,
-        monday_board_id: session.boardId ? String(session.boardId) : undefined,
-        monday_item_id:  session.itemId  ? String(session.itemId)  : undefined,
-        content_html:    finalHtml,
-        filled_data:     varValues,
-        owner_email:     ownerEmail || undefined,
-        owner_name:      ownerName  || undefined,
-      })
+
+      // Modo edición: regenerar documento existente (mantiene folio)
+      const res = session.documentId
+        ? await api.put(`/api/documents/${session.documentId}/regenerate`, {
+            content_html: finalHtml,
+            filled_data:  varValues,
+          })
+        : await api.post('/api/documents/generate', {
+            template_id:     session.templateId,
+            name:            docName,
+            monday_board_id: session.boardId ? String(session.boardId) : undefined,
+            monday_item_id:  session.itemId  ? String(session.itemId)  : undefined,
+            content_html:    finalHtml,
+            filled_data:     varValues,
+            owner_email:     ownerEmail || undefined,
+            owner_name:      ownerName  || undefined,
+          })
+
       setGeneratedDocId(res.data.id)
       setGeneratedPdfUrl(res.data.pdf_url)
       try { window.opener?.dispatchEvent(new CustomEvent('mxd-doc-generated', { detail: res.data })) } catch {}

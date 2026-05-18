@@ -461,6 +461,41 @@ router.post('/generate', requireEditor, async (req, res) => {
   res.status(201).json(doc);
 });
 
+// PUT /api/documents/:id/regenerate — regenera el PDF de un documento existente (mantiene folio)
+router.put('/:id/regenerate', requireEditor, async (req, res) => {
+  const { accountId } = req.mondayContext;
+  const { content_html, filled_data = {} } = req.body;
+
+  const existing = await query(
+    `SELECT * FROM documents WHERE id = $1 AND monday_account_id = $2`,
+    [req.params.id, accountId]
+  );
+  const doc = existing.rows[0];
+  if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
+
+  const filledHtml  = fillTemplate(content_html || doc.content_html, filled_data);
+  const fullHtml    = wrapDocumentHtml(filledHtml, doc.name);
+  const pdfBuffer   = await generatePdf(fullHtml);
+
+  const updated = await query(
+    `UPDATE documents
+     SET content_html = $1, pdf_content = $2, filled_data = $3,
+         signed_pdf_content = NULL, status = 'draft', updated_at = NOW()
+     WHERE id = $4
+     RETURNING *`,
+    [filledHtml, pdfBuffer, JSON.stringify(filled_data), doc.id]
+  );
+
+  logEvent({
+    documentId: doc.id,
+    action:     'document.regenerated',
+    actor:      { id: req.mondayContext.userId },
+    metadata:   { folio: doc.doc_number },
+  });
+
+  res.json(updated.rows[0]);
+});
+
 // DELETE /api/documents/:id
 router.delete('/:id', requireEditor, async (req, res) => {
   const { accountId } = req.mondayContext;
