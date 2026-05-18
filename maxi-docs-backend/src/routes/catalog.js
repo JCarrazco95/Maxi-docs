@@ -291,6 +291,14 @@ router.post('/import-monday', requireEditor, async (req, res) => {
   res.json({ ok: true, categoriesImported, productsImported });
 });
 
+// POST /api/catalog/clear — borra todos los productos y categorías de la cuenta
+router.post('/clear', requireEditor, async (req, res) => {
+  const { accountId } = req.mondayContext;
+  await query(`DELETE FROM catalog_products   WHERE monday_account_id = $1`, [accountId]);
+  await query(`DELETE FROM catalog_categories WHERE monday_account_id = $1`, [accountId]);
+  res.json({ ok: true, message: 'Catálogo limpiado' });
+});
+
 // ── Estado de sincronización con Monday ───────────────────────
 router.get('/monday-status', (req, res) => {
   res.json({

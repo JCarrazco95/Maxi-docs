@@ -287,6 +287,26 @@ export default function CatalogPage() {
           <button onClick={handleImport} disabled={importing || !mondayStatus?.enabled} style={{ ...s.importBtn, opacity: (!mondayStatus?.enabled) ? 0.5 : 1 }} title={!mondayStatus?.enabled ? 'Configura MONDAY_API_TOKEN y MONDAY_CATALOG_BOARD_ID en .env' : ''}>
             {importing ? <><span className="spinner-sm" /> Importando…</> : <><IcoImport /> Importar Monday</>}
           </button>
+          <button
+            onClick={async () => {
+              if (!confirm('¿Limpiar TODO el catálogo y reimportar desde Monday? Esto borrará todos los productos actuales.')) return
+              setImporting(true); setImportMsg(null)
+              try {
+                await api.post('/api/catalog/clear')
+                const r = await api.post('/api/catalog/import-monday')
+                setImportMsg(`✅ Catálogo limpiado y reimportado: ${r.data.categoriesImported} categorías, ${r.data.productsImported} productos`)
+                loadAll()
+              } catch (e) {
+                setImportMsg('❌ ' + (e.response?.data?.error || 'Error'))
+              } finally {
+                setImporting(false)
+              }
+            }}
+            disabled={importing || !mondayStatus?.enabled}
+            style={{ ...s.importBtn, background: '#e2445c', color: 'white', opacity: (!mondayStatus?.enabled) ? 0.5 : 1 }}
+          >
+            <IcoTrash /> Limpiar y reimportar
+          </button>
           {importMsg && <div style={{ fontSize: 11, color: '#676879', marginTop: 6, wordBreak: 'break-word' }}>{importMsg}</div>}
         </div>
       </div>
