@@ -681,7 +681,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
               </div>
               {avgDeducible > 0 && (
                 <div className="pt-total-line" style={{ color:'#676879', fontSize:11 }}>
-                  <span>Deducible máximo ({Math.round(avgDeducible)}%)</span>
+                  <span>Deducible ({Math.round(avgDeducible)}%)</span>
                   <span>{fmt(deducibleAmt)}</span>
                 </div>
               )}
