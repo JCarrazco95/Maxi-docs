@@ -253,15 +253,11 @@ export default function EditorPage() {
           if (r.data.email) setOwnerEmail(r.data.email)
           if (r.data.name)  setOwnerName(r.data.name)
 
-          // Calcular fecha de creación y vigencia (15 días hábiles)
+          // Calcular fecha de creación y vigencia (15 días calendario)
           const hoy = new Date()
           const fmtDate = d => d.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
-          let diasHabiles = 0, vigencia = new Date(hoy)
-          while (diasHabiles < 15) {
-            vigencia.setDate(vigencia.getDate() + 1)
-            const dia = vigencia.getDay()
-            if (dia !== 0 && dia !== 6) diasHabiles++
-          }
+          const vigencia = new Date(hoy)
+          vigencia.setDate(vigencia.getDate() + 15)
 
           // Variables automáticas del vendedor + fechas
           const autoVars = {
