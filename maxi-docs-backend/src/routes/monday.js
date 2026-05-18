@@ -137,7 +137,7 @@ router.get('/board/:boardId/item/:itemId', async (req, res) => {
     });
 
     // Aliases para compatibilidad con la plantilla MAXIRent
-    if (values.razon_social) values.name = values.razon_social; // Razón Social → {{name}}
+    // name = nombre del lead (item), razon_social = empresa — NO sobreescribir name
     if (values.e_mail)       values.correo_electronico = values.e_mail;
     if (values.lead_email)   values.correo_electronico = values.lead_email;
     if (values.lead_phone)   values.telefono = values.lead_phone;

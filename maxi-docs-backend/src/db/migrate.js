@@ -36,7 +36,7 @@ const SEED_TEMPLATES = [
 <div class="mr-header-info">
   <div>
     <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{razon_social}}</p>
-    <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{primer_nombre}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{name}}</p>
   </div>
   <div style="text-align:right;">
     <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{Fecha_creación}}</p>
