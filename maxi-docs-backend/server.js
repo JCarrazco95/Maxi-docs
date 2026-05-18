@@ -88,6 +88,7 @@ app.use((err, _req, res, _next) => {
 async function ensureColumns() {
   const cols = [
     `ALTER TABLE catalog_categories ADD COLUMN IF NOT EXISTS monday_group_id TEXT`,
+    `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='uq_cat_account_name') THEN ALTER TABLE catalog_categories ADD CONSTRAINT uq_cat_account_name UNIQUE (monday_account_id, name); END IF; END $$`,
     `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS monday_item_id  TEXT`,
     `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS sort_order      INTEGER DEFAULT 0`,
     `ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS active          BOOLEAN DEFAULT true`,

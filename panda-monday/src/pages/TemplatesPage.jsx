@@ -83,16 +83,9 @@ export default function TemplatesPage() {
     try {
       setLoading(true)
       setError(null)
+      // Seed siempre actualiza el contenido de la plantilla MAXIRent
+      api.post('/api/templates/seed').catch(() => {})
       const res = await api.get('/api/templates')
-      // Si no hay plantillas, hacer seed automático de la plantilla v2
-      if (res.data.length === 0) {
-        try {
-          await api.post('/api/templates/seed')
-          const res2 = await api.get('/api/templates')
-          setTemplates(res2.data)
-          return
-        } catch (_) { /* si falla el seed, continuar sin plantillas */ }
-      }
       setTemplates(res.data)
     } catch (e) {
       setError(e.response?.data?.error || 'Error al cargar plantillas. Verifica que el backend esté corriendo.')
