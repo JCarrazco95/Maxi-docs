@@ -98,20 +98,12 @@ router.put('/:id', async (req, res) => {
 router.post('/seed', async (req, res) => {
   const { accountId, userId } = req.mondayContext;
 
-  // Renombrar v2 → sin v2 si existe
+  // Renombrar v2 → sin v2 si existe y actualizar contenido
   await query(
     `UPDATE templates SET name = 'Propuesta Comercial MAXIRent'
      WHERE monday_account_id = $1 AND name = 'Propuesta Comercial MAXIRent v2'`,
     [accountId]
   );
-
-  const exists = await query(
-    `SELECT id FROM templates WHERE monday_account_id = $1 AND name = 'Propuesta Comercial MAXIRent'`,
-    [accountId]
-  );
-  if (exists.rows.length > 0) {
-    return res.json({ seeded: 0, message: 'La plantilla ya existe' });
-  }
 
   const content_html = `<style>
   .mr, .mr * { box-sizing: border-box; }
@@ -137,8 +129,8 @@ router.post('/seed', async (req, res) => {
 <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-01.png" style="width:100%;display:block;margin-bottom:2px;" />
 <div class="mr-header-info">
   <div>
-    <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{razon_social}}</p>
-    <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{representante}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{name}}</p>
+    <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{name}}</p>
   </div>
   <div style="text-align:right;">
     <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{fecha}}</p>
@@ -184,9 +176,8 @@ router.post('/seed', async (req, res) => {
   <li><strong style="color:#1B3055;">Control</strong> y visibilidad total de sus operadores</li>
 </ul>
 <div class="mr-rep">
-  <p style="margin:2px 0;font-weight:700;">{{representante}}</p>
+  <p style="margin:2px 0;font-weight:700;">{{ejecutivo}}</p>
   <p style="margin:2px 0;">Ejecutivo Comercial</p>
-  <p style="margin:2px 0;">{{telefono}}</p>
   <p style="margin:2px 0;">{{correo_electronico}}</p>
 </div>
 <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" style="width:100%;display:block;margin-top:24px;" />
@@ -196,9 +187,18 @@ router.post('/seed', async (req, res) => {
   const variables = extractVariables(content_html);
   const result = await query(
     `INSERT INTO templates (name, description, content_html, variables, monday_user_id, monday_account_id)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    ['Propuesta Comercial MAXIRent v2', 'Plantilla oficial MAXIRent — TARIFAS, ADECUACIONES y VALOR DEL ACUERDO',
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT DO NOTHING
+     RETURNING *`,
+    ['Propuesta Comercial MAXIRent', 'Plantilla oficial MAXIRent — TARIFAS, ADECUACIONES y VALOR DEL ACUERDO',
      content_html, JSON.stringify(variables), userId, accountId]
+  );
+
+  // Si ya existía, actualizar el contenido con las variables nuevas
+  await query(
+    `UPDATE templates SET content_html = $1, variables = $2, updated_at = NOW()
+     WHERE monday_account_id = $3 AND name = 'Propuesta Comercial MAXIRent'`,
+    [content_html, JSON.stringify(variables), accountId]
   );
   const tpl = result.rows[0];
   scheduleThumbnail(tpl.id, content_html);

@@ -9,16 +9,20 @@ import { logEvent, hashPdfFile } from '../services/auditService.js';
 
 const router = Router();
 
-const MONDAY_COTIZACIONES_BOARD = '18413534550';
-const MONDAY_COTIZACIONES_GROUP = 'group_mm3ep2rx';
+// Board principal: Oportunidades Maxirent (maxirent-cast.monday.com)
+const MONDAY_COTIZACIONES_BOARD = '8311006777';
+const MONDAY_COTIZACIONES_GROUP = 'topics'; // "Cotizaciones enviadas"
 
-// Columnas del board de cotizaciones
-const COL_CLIENTE       = 'text_mm3e1jhd';
-const COL_MONTO_TOTAL   = 'numeric_mm3etbvx';
-const COL_FECHA_EMISION = 'date_mm3ett0s';
-const COL_ESTADO        = 'color_mm3e5383';
-const COL_RESPONSABLE   = 'multiple_person_mm3ekbxy';
-const COL_PDF           = 'file_mm3ermnh';
+// Columnas del board Oportunidades Maxirent
+const COL_RAZON_SOCIAL  = 'text_mkvxs7sb';       // Razón social
+const COL_MONTO_TOTAL   = 'n_meros_mkmfsgxr';    // Valor del acuerdo
+const COL_VALOR_COT     = 'deal_value';           // Valor de la cotización
+const COL_FECHA_EMISION = 'deal_creation_date';   // Fecha de creación del acuerdo
+const COL_ESTADO_COT    = 'color_mktmr9yy';       // Estado cotización → "Enviado"
+const COL_ETAPA         = 'deal_stage';           // Etapa → "Cotización enviada"
+const COL_RESPONSABLE   = 'deal_owner';           // Ejecutivo (people)
+const COL_PDF           = 'archivo_mkmghcc4';     // Cotización (file)
+const COL_FOLIO         = 'text_mktmgv5z';        // Folio Pandadoc
 
 // Extrae el total de todas las tablas de precios en el HTML
 function extractPricingTotal(html) {
@@ -86,10 +90,13 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
     const client    = clientName ?? '';
 
     const colValues = {
-      [COL_CLIENTE]:       client,
+      [COL_RAZON_SOCIAL]:  client,
       [COL_MONTO_TOTAL]:   String(computed),
+      [COL_VALOR_COT]:     String(computed),
       [COL_FECHA_EMISION]: { date: today },
-      [COL_ESTADO]:        { label: 'En Revisión' },
+      [COL_ESTADO_COT]:    { label: 'Enviado' },
+      [COL_ETAPA]:         { label: 'Cotización enviada' },
+      [COL_FOLIO]:         docNumber,
     };
 
     if (mondayUserId && mondayUserId !== 'dev') {

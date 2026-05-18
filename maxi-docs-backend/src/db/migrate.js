@@ -96,7 +96,6 @@ const SEED_TEMPLATES = [
 <div class="mr-rep">
   <p style="margin:2px 0;font-weight:700;">{{ejecutivo}}</p>
   <p style="margin:2px 0;">Ejecutivo Comercial</p>
-  <p style="margin:2px 0;">{{telefono}}</p>
   <p style="margin:2px 0;">{{correo_electronico}}</p>
 </div>
 <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" style="width:100%;display:block;margin-top:24px;" />
