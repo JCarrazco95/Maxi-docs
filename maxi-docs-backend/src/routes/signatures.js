@@ -7,6 +7,100 @@ import { requireEditor } from '../middleware/mondayAuth.js';
 
 const router = Router();
 
+// ── Integración Monday: crear oportunidad al enviar a firma ────
+const OPORTUN_BOARD  = '8311006777';
+const OPORTUN_GROUP  = 'topics'; // Cotizaciones enviadas
+const COL_RAZON      = 'text_mkvxs7sb';
+const COL_VALOR      = 'n_meros_mkmfsgxr';
+const COL_DEAL_VAL   = 'deal_value';
+const COL_FECHA      = 'deal_creation_date';
+const COL_ESTADO_COT = 'color_mktmr9yy';
+const COL_ETAPA      = 'deal_stage';
+const COL_EJECUTIVO  = 'deal_owner';
+const COL_FOLIO      = 'text_mktmgv5z';
+const COL_PDF_FILE   = 'archivo_mkmghcc4';
+
+async function mondayGql(query, token) {
+  const res = await fetch('https://api.monday.com/v2', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body: JSON.stringify({ query }),
+  });
+  const data = await res.json();
+  if (data.errors?.length) throw new Error(data.errors[0].message);
+  return data.data;
+}
+
+async function crearOportunidadEnMonday({ document, userId }) {
+  const token = process.env.MONDAY_API_TOKEN;
+  if (!token) return;
+  try {
+    const filled  = typeof document.filled_data === 'string'
+      ? JSON.parse(document.filled_data) : (document.filled_data ?? {});
+    const cliente = filled.name || filled.razon_social || filled.nombre || document.name || '';
+    const empresa = filled.razon_social || filled.nombre || '';
+    const today   = new Date().toISOString().split('T')[0];
+    const itemName = `${cliente} / Propuesta Comercial`;
+
+    const colValues = {
+      [COL_RAZON]:      empresa,
+      [COL_FECHA]:      { date: today },
+      [COL_ESTADO_COT]: { label: 'Enviado' },
+      [COL_ETAPA]:      { label: 'Cotización enviada' },
+      [COL_FOLIO]:      document.doc_number ?? '',
+    };
+    if (userId && userId !== 'dev') {
+      colValues[COL_EJECUTIVO] = { personsAndTeams: [{ id: Number(userId), kind: 'person' }] };
+    }
+
+    const mutation = `
+      mutation {
+        create_item(
+          board_id: ${OPORTUN_BOARD},
+          group_id: "${OPORTUN_GROUP}",
+          item_name: ${JSON.stringify(itemName)},
+          column_values: ${JSON.stringify(JSON.stringify(colValues))}
+        ) { id }
+      }
+    `;
+    const data = await mondayGql(mutation, token);
+    const itemId = data?.create_item?.id;
+    console.log(`[Monday] Oportunidad creada: ${itemId} — ${itemName}`);
+
+    // Guardar item ID en el documento
+    if (itemId) {
+      await query(
+        `UPDATE documents SET monday_doc_item_id = $1 WHERE id = $2`,
+        [itemId, document.id]
+      );
+      // Subir PDF en background
+      if (document.pdf_content) {
+        uploadPdfOportunidad(itemId, Buffer.from(document.pdf_content), document.doc_number, token).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.error('[Monday] Error creando oportunidad:', e.message);
+  }
+}
+
+async function uploadPdfOportunidad(itemId, pdfBuffer, docNumber, token) {
+  try {
+    const filename  = `cotizacion-${docNumber ?? 'doc'}.pdf`;
+    const mutation  = `mutation ($file: File!) { add_file_to_column(item_id: ${itemId}, column_id: "${COL_PDF_FILE}", file: $file) { id } }`;
+    const formData  = new FormData();
+    formData.append('query', mutation);
+    formData.append('variables[file]', new Blob([pdfBuffer], { type: 'application/pdf' }), filename);
+    const res = await fetch('https://api.monday.com/v2/file', {
+      method: 'POST', headers: { Authorization: token }, body: formData,
+    });
+    const data = await res.json();
+    if (data.errors?.length) throw new Error(data.errors[0].message);
+    console.log(`[Monday] PDF subido al item ${itemId}`);
+  } catch (e) {
+    console.error('[Monday] Error subiendo PDF:', e.message);
+  }
+}
+
 // Rate limiter local para el portal y el endpoint de firma
 const _rlSign = new Map();
 function signRateLimit(req, res, next) {
@@ -59,7 +153,7 @@ router.post('/send', requireEditor, async (req, res) => {
   // Buscar por ID primero; verificar cuenta solo si no es admin
   // (evita condición de carrera donde el contexto de Monday no cargó aún)
   const docResult = await query(
-    `SELECT * FROM documents WHERE id = $1`,
+    `SELECT *, pdf_content, filled_data, doc_number FROM documents WHERE id = $1`,
     [document_id]
   );
   const document = docResult.rows[0];
@@ -118,6 +212,9 @@ router.post('/send', requireEditor, async (req, res) => {
   }
 
   await query(`UPDATE documents SET status = 'sent' WHERE id = $1`, [document_id]);
+
+  // Crear oportunidad en Monday al enviar a firma
+  crearOportunidadEnMonday({ document, userId }).catch(() => {});
 
   // Audit: documento enviado a firma
   const pdfHash = hashPdfFile(document.pdf_url);
