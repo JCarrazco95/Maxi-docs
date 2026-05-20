@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db/connection.js';
-import { fillTemplate, generatePdf, wrapDocumentHtml, processPricingTableNodes } from '../services/pdfService.js';
+import { fillTemplate, applyVariables, generatePdf, wrapDocumentHtml, processPricingTableNodes } from '../services/pdfService.js';
 import { uploadPdf, buildPdfKey } from '../services/storageService.js';
 import { buildPricingTableHtml } from '../services/catalogService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
@@ -376,13 +376,15 @@ router.post('/generate', requireEditor, async (req, res) => {
     return res.status(400).json({ error: 'Se requiere template_id o content_html' });
   }
 
+  // storedHtml = HTML para guardar en DB (variables reemplazadas, <pricing-table> intactos → re-editable)
+  // filledHtml = HTML para PDF (variables + tablas expandidas para Puppeteer)
+  let storedHtml;
   let filledHtml;
 
   if (content_html) {
     // Modo editor: el HTML ya viene con variables reemplazadas desde el cliente.
-    // fillTemplate solo procesará los nodos <pricing-table> y cualquier {{variable}}
-    // que el usuario haya dejado sin llenar (se blanquea).
-    filledHtml = fillTemplate(content_html, filled_data);
+    storedHtml = applyVariables(content_html, filled_data);   // preserva <pricing-table>
+    filledHtml = fillTemplate(content_html, filled_data);     // expande para PDF
   } else {
     // Modo clásico: cargar plantilla y reemplazar variables en el backend
     const templateResult = await query(
@@ -396,7 +398,8 @@ router.post('/generate', requireEditor, async (req, res) => {
     if (catalog_items.length > 0) {
       enrichedData.tabla_renta = buildPricingTableHtml(catalog_items, catalog_iva);
     }
-    filledHtml = fillTemplate(template.content_html, enrichedData);
+    storedHtml = applyVariables(template.content_html, enrichedData);  // preserva <pricing-table>
+    filledHtml = fillTemplate(template.content_html, enrichedData);    // expande para PDF
   }
 
   const fullHtml = wrapDocumentHtml(filledHtml, name);
@@ -427,7 +430,7 @@ router.post('/generate', requireEditor, async (req, res) => {
   // 7. La URL del PDF apunta a la API (sirve desde DB)
   const apiPdfUrl = `/api/documents/${documentId}/pdf`;
 
-  // 8. Guardar documento en la base de datos
+  // 8. Guardar documento en la base de datos (content_html = storedHtml para re-editar)
   const result = await query(
     `INSERT INTO documents
        (id, template_id, name, doc_number, monday_board_id, monday_item_id, monday_account_id,
@@ -439,7 +442,7 @@ router.post('/generate', requireEditor, async (req, res) => {
       documentId, template_id, name, docNumber,
       monday_board_id, monday_item_id, accountId,
       userId, owner_email || null, owner_name || null, mondayDocItemId,
-      JSON.stringify(filled_data), filledHtml, apiPdfUrl, pdfBuffer,
+      JSON.stringify(filled_data), storedHtml, apiPdfUrl, pdfBuffer,
     ]
   );
 
@@ -473,9 +476,11 @@ router.put('/:id/regenerate', requireEditor, async (req, res) => {
   const doc = existing.rows[0];
   if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
 
-  const filledHtml  = fillTemplate(content_html || doc.content_html, filled_data);
-  const fullHtml    = wrapDocumentHtml(filledHtml, doc.name);
-  const pdfBuffer   = await generatePdf(fullHtml);
+  const rawHtml    = content_html || doc.content_html;
+  const storedHtml = applyVariables(rawHtml, filled_data);  // preserva <pricing-table> para re-editar
+  const filledHtml = fillTemplate(rawHtml, filled_data);    // expande tablas para PDF
+  const fullHtml   = wrapDocumentHtml(filledHtml, doc.name);
+  const pdfBuffer  = await generatePdf(fullHtml);
 
   const updated = await query(
     `UPDATE documents
@@ -483,7 +488,7 @@ router.put('/:id/regenerate', requireEditor, async (req, res) => {
          signed_pdf_content = NULL, status = 'draft', updated_at = NOW()
      WHERE id = $4
      RETURNING *`,
-    [filledHtml, pdfBuffer, JSON.stringify(filled_data), doc.id]
+    [storedHtml, pdfBuffer, JSON.stringify(filled_data), doc.id]
   );
 
   logEvent({

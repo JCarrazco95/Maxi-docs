@@ -151,10 +151,18 @@ export function processPricingTableNodes(html) {
  * Reemplaza variables {{nombre_variable}} en el HTML con los valores reales
  * y procesa los nodos <pricing-table> embebidos en el documento.
  */
+/**
+ * Solo reemplaza {{variables}} — preserva los nodos <pricing-table> intactos.
+ * Usar para guardar en DB (permite re-editar el documento).
+ */
+export function applyVariables(html, data) {
+  return (html || '').replace(/\{\{(\w+)\}\}/g, (_match, key) => data[key] ?? '')
+}
+
 export function fillTemplate(html, data) {
   // 1. Reemplazar variables
-  let result = html.replace(/\{\{(\w+)\}\}/g, (_match, key) => data[key] ?? '')
-  // 2. Procesar tablas de precios interactivas
+  let result = (html || '').replace(/\{\{(\w+)\}\}/g, (_match, key) => data[key] ?? '')
+  // 2. Procesar tablas de precios interactivas (solo para PDF — expande <pricing-table>)
   result = processPricingTableNodes(result)
   return result
 }
