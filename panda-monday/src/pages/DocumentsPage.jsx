@@ -103,7 +103,7 @@ const IconChevron = ({ open }) => (
   </svg>
 )
 
-export default function DocumentsPage({ itemId, boardId, userId, userName, isAdmin }) {
+export default function DocumentsPage({ itemId, boardId, accountId, userId, userName, isAdmin }) {
   const [documents, setDocuments]         = useState([])
   const [loading, setLoading]             = useState(true)
   const [error, setError]                 = useState(null)
@@ -370,7 +370,7 @@ export default function DocumentsPage({ itemId, boardId, userId, userName, isAdm
                           title="Editar documento"
                           onClick={() => openEditorTab({
                             documentId: doc.id,
-                            accountId:  userId,
+                            accountId,
                             userId,
                             isAdmin,
                           })}

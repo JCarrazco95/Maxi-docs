@@ -125,6 +125,7 @@ export default function App() {
           <DocumentsPage
             itemId={itemId}
             boardId={boardId}
+            accountId={accountId}
             userId={userId}
             userName={userName}
             isAdmin={isAdmin}
