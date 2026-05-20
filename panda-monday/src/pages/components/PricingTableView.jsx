@@ -1,4 +1,4 @@
-import { useState, useEffect, Component } from 'react'
+import { useState, useEffect, useRef, Component } from 'react'
 import { NodeViewWrapper } from '@tiptap/react'
 import { decodeItems, encodeItems, decodeColumns, encodeColumns } from './PricingTableExtension.js'
 import CatalogPickerModal from './CatalogPickerModal.jsx'
@@ -76,6 +76,59 @@ const COLS = {
   generic:    { grid: '90px 1fr 100px 110px 60px 110px 36px', headers: ['CANT.', 'SERVICIO / UNIDAD', 'SKU', 'PRECIO/MES', 'DESC.%', 'SUBTOTAL', ''], align: ['center', 'left', 'left', 'right', 'center', 'right', 'center'] },
 }
 
+/**
+ * Input numérico estable — definido FUERA del componente padre para que React
+ * no lo desmonte en cada re-render y el usuario pueda escribir libremente.
+ * onSave se llama al cambiar (para las flechas) y en onBlur (para teclado).
+ */
+function NumInput({ value, onSave, w, min = '0', step = '0.01' }) {
+  const inputRef = useRef(null)
+  const isFocused = useRef(false)
+
+  // Sincronizar desde afuera solo cuando el input no tiene el foco
+  useEffect(() => {
+    const el = inputRef.current
+    if (el && !isFocused.current) {
+      el.value = value != null ? String(value) : '0'
+    }
+  }, [value])
+
+  return (
+    <input
+      ref={inputRef}
+      type="number"
+      min={min}
+      step={step}
+      defaultValue={value ?? 0}
+      className="pt-num-input"
+      style={w ? { width: w } : {}}
+      onFocus={e => {
+        isFocused.current = true
+        e.target.select()       // selecciona todo para reemplazar de un golpe
+      }}
+      onChange={e => {
+        // Guardar inmediatamente en cambios de flechas/spinner
+        const n = parseFloat(e.target.value)
+        if (!isNaN(n)) onSave(n)
+      }}
+      onBlur={e => {
+        isFocused.current = false
+        const n = parseFloat(e.target.value)
+        if (isNaN(n)) {
+          e.target.value = String(value ?? 0)   // revertir si quedó vacío
+        } else {
+          onSave(n)
+        }
+      }}
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => {
+        e.stopPropagation()
+        if (e.key === 'Enter') e.target.blur()  // confirmar con Enter
+      }}
+    />
+  )
+}
+
 function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
   const [catalogOpen, setCatalogOpen] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -145,13 +198,8 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
   const total    = subtotal + iva
 
   // ── Inputs reutilizables ────────────────────────────────────────
-  const NumInput = ({ id, field, value, w }) => (
-    <input type="number" min="0" step="0.01" value={value ?? ''}
-      className="pt-num-input" style={w ? { width: w } : {}}
-      onChange={e => setField(id, field, e.target.value)}
-      onClick={e => e.stopPropagation()}
-      onKeyDown={e => e.stopPropagation()} />
-  )
+  // NumInput ahora está definido fuera del componente (ver arriba) para
+  // que React no lo desmonte en cada re-render. Solo usamos TextInput aquí.
 
   const TextInput = ({ id, field, value, placeholder, list }) => (
     <>
@@ -178,10 +226,6 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
       const diaria  = Number(item.dailyRate) || 0
       const mensual = diaria * 30 * qty
 
-      const numStyle = { width: 80, textAlign: 'right', padding: '3px 6px',
-        border: '1px solid #e0e2ea', borderRadius: 4, fontSize: 12,
-        background: 'white', outline: 'none', fontFamily: 'inherit' }
-
       return (
         <div key={item.id} className="pt-row" style={{ gridTemplateColumns: cols.grid }}>
           {/* Tipo de unidad */}
@@ -190,64 +234,41 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
               placeholder="Tipo de unidad…" list={`vehicles-tf-${item.id}`} />
           </div>
 
-          {/* Cant — numérico directo */}
+          {/* Cant */}
           <div style={{ display:'flex', justifyContent:'center', alignItems:'center' }}>
-            <input type="number" min="1" step="1"
-              value={item.quantity ?? 1}
-              style={{ ...numStyle, width: 36, textAlign: 'center' }}
-              onChange={e => setField(item.id, 'quantity', e.target.value)}
-              onClick={e => e.stopPropagation()}
-              onKeyDown={e => e.stopPropagation()} />
+            <NumInput value={item.quantity ?? 1} onSave={n => setField(item.id, 'quantity', n)}
+              min="1" step="1" w={36} />
           </div>
 
           {/* Deducible % */}
           <div style={{ display:'flex', alignItems:'center', gap:2 }}>
-            <input type="number" min="0" max="100" step="1"
-              value={item.deductible ?? 10}
-              style={{ ...numStyle, width: 40, textAlign: 'center' }}
-              onChange={e => setField(item.id, 'deductible', e.target.value)}
-              onClick={e => e.stopPropagation()}
-              onKeyDown={e => e.stopPropagation()} />
+            <NumInput value={item.deductible ?? 10} onSave={n => setField(item.id, 'deductible', n)}
+              min="0" step="1" w={40} />
             <span style={{ fontSize: 11, color: '#676879' }}>%</span>
           </div>
 
-          {/* Renta diaria $ — numérico */}
+          {/* Renta diaria $ */}
           <div style={{ display:'flex', alignItems:'center', gap:2, justifyContent:'flex-end', paddingRight: 4 }}>
             <span style={{ fontSize: 11, color: '#676879' }}>$</span>
-            <input type="number" min="0" step="0.01"
-              value={item.dailyRate ?? 0}
-              style={{ ...numStyle, width: 78 }}
-              onChange={e => setField(item.id, 'dailyRate', e.target.value)}
-              onClick={e => e.stopPropagation()}
-              onKeyDown={e => e.stopPropagation()} />
+            <NumInput value={item.dailyRate ?? 0} onSave={n => setField(item.id, 'dailyRate', n)} w={78} />
           </div>
 
-          {/* Renta mensual = diaria × 30 × cant — solo lectura */}
+          {/* Renta mensual — solo lectura */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end',
             paddingRight: 8, fontWeight: 700, color: '#1B3055', fontSize: 12 }}>
             {fmt(mensual)}
           </div>
 
-          {/* Entrega $ — numérico */}
+          {/* Entrega $ */}
           <div style={{ display:'flex', alignItems:'center', gap:2, justifyContent:'flex-end', paddingRight: 4 }}>
             <span style={{ fontSize: 11, color: '#676879' }}>$</span>
-            <input type="number" min="0" step="0.01"
-              value={item.delivery ?? 0}
-              style={{ ...numStyle, width: 68 }}
-              onChange={e => setField(item.id, 'delivery', e.target.value)}
-              onClick={e => e.stopPropagation()}
-              onKeyDown={e => e.stopPropagation()} />
+            <NumInput value={item.delivery ?? 0} onSave={n => setField(item.id, 'delivery', n)} w={68} />
           </div>
 
-          {/* Recolección $ — numérico */}
+          {/* Recolección $ */}
           <div style={{ display:'flex', alignItems:'center', gap:2, justifyContent:'flex-end', paddingRight: 4 }}>
             <span style={{ fontSize: 11, color: '#676879' }}>$</span>
-            <input type="number" min="0" step="0.01"
-              value={item.retrieval ?? 0}
-              style={{ ...numStyle, width: 68 }}
-              onChange={e => setField(item.id, 'retrieval', e.target.value)}
-              onClick={e => e.stopPropagation()}
-              onKeyDown={e => e.stopPropagation()} />
+            <NumInput value={item.retrieval ?? 0} onSave={n => setField(item.id, 'retrieval', n)} w={68} />
           </div>
 
           {/* Eliminar */}
@@ -300,26 +321,21 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
             placeholder="Tipo de unidad…" list={`vehicles-${item.id}`} />
         </div>
         <div className="pt-c-price">
-          <NumInput id={item.id} field="dailyRate"
-            value={(item.dailyRate != null ? item.dailyRate : (item.price || 0) / 30).toFixed(2)} />
+          <NumInput
+            value={item.dailyRate != null ? item.dailyRate : (item.price || 0) / 30}
+            onSave={n => setField(item.id, 'dailyRate', n)} />
         </div>
         <div className="pt-c-price">
-          <NumInput id={item.id} field="price" value={(item.price || 0).toFixed(2)} />
+          <NumInput value={item.price ?? 0} onSave={n => setField(item.id, 'price', n)} />
         </div>
         <div className="pt-c-deductible">
-          <input type="number" min="0" max="100" step="1" className="pt-pct-input"
-            value={item.deductible ?? 10}
-            onChange={e => setField(item.id, 'deductible', e.target.value)}
-            onClick={e => e.stopPropagation()}
-            onKeyDown={e => e.stopPropagation()} />
+          <NumInput value={item.deductible ?? 10} onSave={n => setField(item.id, 'deductible', n)}
+            min="0" step="1" w={40} />
           <span className="pt-pct-symbol">%</span>
         </div>
         <div className="pt-c-deductible">
-          <input type="number" min="1" step="1" className="pt-pct-input" style={{ width: 36 }}
-            value={item.days ?? 30}
-            onChange={e => setField(item.id, 'days', e.target.value)}
-            onClick={e => e.stopPropagation()}
-            onKeyDown={e => e.stopPropagation()} />
+          <NumInput value={item.days ?? 30} onSave={n => setField(item.id, 'days', n)}
+            min="1" step="1" w={36} />
         </div>
         {discCell(item.id, item.discount)}
         <div className="pt-c-subtotal pt-cell-num pt-cell-bold">{fmt(rowSubtotal(item, 'renta'))}</div>
@@ -335,13 +351,13 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
             placeholder="Tipo de unidad…" list={`vehicles-tl-${item.id}`} />
         </div>
         <div className="pt-c-price">
-          <NumInput id={item.id} field="price" value={(item.price || 0).toFixed(2)} />
+          <NumInput value={item.price ?? 0} onSave={n => setField(item.id, 'price', n)} />
         </div>
         <div className="pt-c-price">
-          <NumInput id={item.id} field="delivery" value={(item.delivery ?? 0).toFixed(2)} />
+          <NumInput value={item.delivery ?? 0} onSave={n => setField(item.id, 'delivery', n)} />
         </div>
         <div className="pt-c-price">
-          <NumInput id={item.id} field="retrieval" value={(item.retrieval ?? 0).toFixed(2)} />
+          <NumInput value={item.retrieval ?? 0} onSave={n => setField(item.id, 'retrieval', n)} />
         </div>
         {discCell(item.id, item.discount)}
         <div className="pt-c-subtotal pt-cell-num pt-cell-bold">
@@ -358,7 +374,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
           <TextInput id={item.id} field="name" value={item.name} placeholder="Descripción…" />
         </div>
         <div className="pt-c-price">
-          <NumInput id={item.id} field="price" value={(item.price || 0).toFixed(2)} />
+          <NumInput value={item.price ?? 0} onSave={n => setField(item.id, 'price', n)} />
         </div>
         <div className="pt-c-subtotal pt-cell-num pt-cell-bold">{fmt((item.price||0)*(item.quantity||1))}</div>
         {delCell}
@@ -376,7 +392,9 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
           {customCols.map(col => (
             <div key={col.id} className="pt-c-name">
               {col.type === 'number'
-                ? <NumInput id={item.id} field={col.id} value={(item[col.id] ?? 0).toFixed ? Number(item[col.id] ?? 0).toFixed(2) : (item[col.id] ?? '')} />
+                ? <NumInput
+                    value={Number(item[col.id] ?? 0)}
+                    onSave={n => setField(item.id, col.id, n)} />
                 : col.type === 'dropdown'
                   ? <select
                       className="pt-text-input"
@@ -408,7 +426,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
           <TextInput id={item.id} field="sku" value={item.sku} placeholder="SKU" />
         </div>
         <div className="pt-c-price">
-          <NumInput id={item.id} field="price" value={(item.price || 0).toFixed(2)} />
+          <NumInput value={item.price ?? 0} onSave={n => setField(item.id, 'price', n)} />
         </div>
         {discCell(item.id, item.discount)}
         <div className="pt-c-subtotal pt-cell-num pt-cell-bold">{fmt(rowSubtotal(item, 'generic'))}</div>
