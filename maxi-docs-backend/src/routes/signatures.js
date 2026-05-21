@@ -212,7 +212,8 @@ router.post('/send', requireEditor, async (req, res) => {
         documentName: document.name,
         signUrl,
         senderNote:   sender_note ?? null,
-        senderName:   sender_name ?? null,
+        senderName:   sender_name ?? document.owner_name ?? null,
+        senderEmail:  document.owner_email ?? null,
         expireDays:   expire_days ? Number(expire_days) : null,
       }).catch(err => console.error('[Email] Error:', err.message));
     }
@@ -320,7 +321,7 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
 
   const sigRes = await query(
     `SELECT s.*, d.pdf_url, d.pdf_content, d.name AS document_name, d.id AS document_id,
-            d.monday_account_id, d.owner_email, s.signing_order
+            d.monday_account_id, d.owner_email, d.owner_name, s.signing_order
      FROM signatures s JOIN documents d ON d.id = s.document_id
      WHERE s.id = $1`,
     [signatureId]
@@ -424,7 +425,7 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
     const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:8301';
     const signUrl = next.sign_url || `${PUBLIC_URL}/sign/${next.id}`;
 
-    // Enviar email al siguiente firmante
+    // Enviar email al siguiente firmante (con datos del vendedor del documento original)
     sendSignatureRequest({
       signatureId:  next.id,
       signerName:   next.signer_name,
@@ -432,7 +433,8 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
       documentName: sig.document_name,
       signUrl,
       senderNote:   null,
-      senderName:   null,
+      senderName:   sig.owner_name ?? null,
+      senderEmail:  sig.owner_email ?? null,
       expireDays:   null,
     }).catch(err => console.error('[Email] Error next signer:', err.message));
 
@@ -542,7 +544,8 @@ router.post('/bulk-send', requireEditor, async (req, res) => {
         documentName: doc.name,
         signUrl,
         senderNote:   sender_note ?? null,
-        senderName:   sender_name ?? null,
+        senderName:   sender_name ?? doc.owner_name ?? null,
+        senderEmail:  doc.owner_email ?? null,
         expireDays:   expire_days ?? null,
       }).catch(() => {});
 
