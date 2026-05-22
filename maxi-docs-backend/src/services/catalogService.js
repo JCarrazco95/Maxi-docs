@@ -160,7 +160,7 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
       const mensual  = diaria * 30 * qty;
       const dedPct   = Number(i.deductible) || 0;
       totalMensual  += mensual;
-      subtotal      += mensual * (1 + dedPct / 100);
+      subtotal      += mensual;  // deducible es solo informativo, no suma al total
       return `<tr style="-webkit-print-color-adjust:exact;print-color-adjust:exact;">
         ${TD(i.name)}
         ${TD(qty,'center')}
@@ -171,23 +171,13 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
         ${TD(fmt(Number(i.retrieval)||0),'right')}
       </tr>`;
     }).join('');
-    const avgDed = items.reduce((s,i) => s + (Number(i.deductible)||0), 0) / Math.max(items.length, 1);
-    const deducibleAmt = totalMensual * (avgDed / 100);
     return `${tblStart}
       <thead>${headRow}</thead>
       <tbody>${bodyRows}</tbody>
       <tfoot>
-        <tr>
-          <td colspan="6" style="text-align:right;padding:6px 10px;font-weight:600;font-size:9pt;">Total renta mensual</td>
-          <td style="text-align:right;padding:6px 10px;font-size:9pt;font-weight:700;">${fmt(totalMensual)}</td>
-        </tr>
-        ${avgDed > 0 ? `<tr>
-          <td colspan="6" style="text-align:right;padding:4px 10px;font-size:8.5pt;color:#676879;">Deducible máximo (${Math.round(avgDed)}%)</td>
-          <td style="text-align:right;padding:4px 10px;font-size:8.5pt;color:#676879;">${fmt(deducibleAmt)}</td>
-        </tr>` : ''}
         <tr style="${footStyle}">
-          <td colspan="6" style="text-align:right;padding:8px 10px;font-weight:800;font-size:10pt;">Total con deducible</td>
-          <td style="text-align:right;padding:8px 10px;font-weight:900;font-size:12pt;color:#F5A000;">${fmt(totalMensual + deducibleAmt)}</td>
+          <td colspan="6" style="text-align:right;padding:8px 10px;font-weight:800;font-size:10pt;">Total renta mensual</td>
+          <td style="text-align:right;padding:8px 10px;font-weight:900;font-size:12pt;color:#F5A000;">${fmt(totalMensual)}</td>
         </tr>
       </tfoot>
     </table>`;

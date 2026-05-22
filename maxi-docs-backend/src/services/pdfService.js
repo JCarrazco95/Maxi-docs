@@ -57,11 +57,10 @@ const fmt = n => `$${Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:
 export function processPricingTableNodes(html) {
   // Pre-calcular totales de todas las tablas (para el tipo "acuerdo")
   const allTables = parseAllTables(html)
-  // TARIFAS: subtotal = renta mensual + deducible (sin IVA)
+  // TARIFAS: subtotal = renta mensual (deducible es solo informativo, no suma)
   const totalTarifas = allTables.tarifas.reduce((s,i) => {
     const m = (Number(i.dailyRate)||0)*30*(Number(i.quantity)||1)
-    const d = Number(i.deductible) || 0
-    return s + m*(1 + d/100)
+    return s + m
   }, 0)
   // ADECUACIONES: total sin IVA
   const totalAcc     = allTables.accesorios.reduce((s,i) => s + (Number(i.price)||0)*(Number(i.quantity)||1), 0)
@@ -95,13 +94,11 @@ export function processPricingTableNodes(html) {
           if (subtotal === 0) return ''
           const head = `<thead><tr>${TH('DESCRIPCIÓN')}${TH('SUBTOTAL','right')}${TH(`IVA ${ivaRate}%`,'right')}${TH('TOTAL','right')}</tr></thead>`
           let body = '<tbody>'
-          // Una fila por cada item de TARIFAS (subtotal = renta + deducible, sin IVA)
+          // Una fila por cada item de TARIFAS (deducible es solo informativo, no suma)
           for (const item of allTables.tarifas) {
-            const mensual  = (Number(item.dailyRate)||0) * 30 * (Number(item.quantity)||1)
-            const deduc    = Number(item.deductible) || 0
-            const conDeduc = mensual * (1 + deduc / 100)
-            if (conDeduc === 0) continue
-            body += `<tr>${TD(`Renta mensual ${item.name||''}`)}${TD(fmt(conDeduc),'right')}${TD(fmt(conDeduc*ivaRate/100),'right')}${TD(fmt(conDeduc*(1+ivaRate/100)),'right','font-weight:700;')}</tr>`
+            const mensual = (Number(item.dailyRate)||0) * 30 * (Number(item.quantity)||1)
+            if (mensual === 0) continue
+            body += `<tr>${TD(`Renta mensual ${item.name||''}`)}${TD(fmt(mensual),'right')}${TD(fmt(mensual*ivaRate/100),'right')}${TD(fmt(mensual*(1+ivaRate/100)),'right','font-weight:700;')}</tr>`
           }
           // Adecuaciones sin IVA (el IVA se suma en VALOR)
           if (totalAcc > 0) {

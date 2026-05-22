@@ -38,9 +38,8 @@ function rowSubtotal(item, tableType) {
   const disc   = Math.min(Math.max(Number(item.discount) || 0, 0), 100)
   const factor = 1 - disc / 100
   if (tableType === 'tarifas') {
-    const mensual = (Number(item.dailyRate) || 0) * 30 * qty
-    const deduc   = Math.min(Math.max(Number(item.deductible) || 0, 0), 100)
-    return mensual * (1 + deduc / 100)
+    // Deducible es solo informativo — no suma al total
+    return (Number(item.dailyRate) || 0) * 30 * qty
   }
   if (tableType === 'traslados')
     return ((Number(item.price) || 0) + (Number(item.delivery) || 0) + (Number(item.retrieval) || 0)) * qty * factor
@@ -501,13 +500,12 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
       })
     } catch {}
 
-    // TARIFAS: renta mensual + deducible + entrega + recolección
+    // TARIFAS: renta mensual + entrega + recolección (deducible es solo informativo)
     const totalTarifas = tarifasItems.reduce((s, i) => {
       const mensual   = (Number(i.dailyRate)||0) * 30 * (Number(i.quantity)||1)
-      const deduc     = Number(i.deductible) || 0
       const delivery  = Number(i.delivery)  || 0
       const retrieval = Number(i.retrieval) || 0
-      return s + mensual * (1 + deduc / 100) + delivery + retrieval
+      return s + mensual + delivery + retrieval
     }, 0)
     // ADECUACIONES: subtotal sin IVA
     const totalAcc  = accItems.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||1), 0)
@@ -545,21 +543,21 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
             <div style={{ textAlign:'right' }}>TOTAL</div>
           </div>
 
-          {/* Una fila por cada item de TARIFAS (subtotal = renta + deducible, sin IVA) */}
+          {/* Una fila por cada item de TARIFAS (deducible es solo informativo, no suma) */}
           {tarifasItems.map((item, i) => {
+            // Deducible solo informativo — no suma al total
             const mensual   = (Number(item.dailyRate)||0) * 30 * (Number(item.quantity)||1)
-            const deduc     = Number(item.deductible) || 0
             const delivery  = Number(item.delivery)  || 0
             const retrieval = Number(item.retrieval) || 0
-            const conDeduc  = mensual * (1 + deduc / 100) + delivery + retrieval
+            const subtotalItem = mensual + delivery + retrieval
             return (
               <div key={i} className="pt-row" style={{ gridTemplateColumns: '1fr 130px 130px 130px' }}>
                 <div className="pt-c-name" style={{ pointerEvents:'none', fontSize:12 }}>
                   Renta mensual {item.name || '—'}
                 </div>
-                <div className="pt-c-subtotal pt-cell-num">{fmt(conDeduc)}</div>
-                <div className="pt-c-subtotal pt-cell-num">{fmt(conDeduc * ivaPct / 100)}</div>
-                <div className="pt-c-subtotal pt-cell-num pt-cell-bold">{fmt(conDeduc * (1 + ivaPct/100))}</div>
+                <div className="pt-c-subtotal pt-cell-num">{fmt(subtotalItem)}</div>
+                <div className="pt-c-subtotal pt-cell-num">{fmt(subtotalItem * ivaPct / 100)}</div>
+                <div className="pt-c-subtotal pt-cell-num pt-cell-bold">{fmt(subtotalItem * (1 + ivaPct/100))}</div>
               </div>
             )
           })}
@@ -681,28 +679,18 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
           )}
         </div>
 
-        {/* Totales tipo tarifas — sin IVA, con deducible */}
+        {/* Totales tipo tarifas — deducible es solo informativo, no suma */}
         {items.length > 0 && tableType === 'tarifas' && (() => {
           const totalMensual     = items.reduce((s,i) => s + (Number(i.dailyRate)||0) * 30 * (Number(i.quantity)||1), 0)
-          const avgDeducible     = items.length > 0
-            ? items.reduce((s,i) => s + (Number(i.deductible)||0), 0) / items.length
-            : 0
-          const deducibleAmt     = totalMensual * (avgDeducible / 100)
           const totalEntrega     = items.reduce((s,i) => s + (Number(i.delivery)||0), 0)
           const totalRecoleccion = items.reduce((s,i) => s + (Number(i.retrieval)||0), 0)
-          const grandTotal       = totalMensual + deducibleAmt + totalEntrega + totalRecoleccion
+          const grandTotal       = totalMensual + totalEntrega + totalRecoleccion
           return (
             <div className="pt-totals">
               <div className="pt-total-line">
                 <span>Total renta mensual</span>
                 <span className="pt-total-val">{fmt(totalMensual)}</span>
               </div>
-              {avgDeducible > 0 && (
-                <div className="pt-total-line" style={{ color:'#676879', fontSize:11 }}>
-                  <span>Deducible ({Math.round(avgDeducible)}%)</span>
-                  <span>{fmt(deducibleAmt)}</span>
-                </div>
-              )}
               {totalEntrega > 0 && (
                 <div className="pt-total-line" style={{ color:'#676879', fontSize:11 }}>
                   <span>Entrega</span>
