@@ -28,7 +28,13 @@ function getSmtp() {
   return _smtpTransport;
 }
 
-async function send({ to, subject, html }) {
+/** Extrae solo la dirección de email de un string tipo "Nombre <email@x.com>" */
+function extractEmail(fromStr) {
+  const m = (fromStr || '').match(/<([^>]+)>/)
+  return m ? m[1] : (fromStr || '').trim()
+}
+
+async function send({ to, subject, html, from: fromOverride, replyTo }) {
   const provider = getProvider();
 
   if (!provider) {
@@ -37,13 +43,16 @@ async function send({ to, subject, html }) {
     return { skipped: true };
   }
 
-  const recipients = Array.isArray(to) ? to : [to];
+  const recipients  = Array.isArray(to) ? to : [to];
+  const fromAddress = fromOverride || FROM;
 
   if (provider === 'resend') {
+    const body = { from: fromAddress, to: recipients, subject, html };
+    if (replyTo) body.reply_to = replyTo;   // Resend usa reply_to
     const res = await fetch('https://api.resend.com/emails', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_KEY}` },
-      body:    JSON.stringify({ from: FROM, to: recipients, subject, html }),
+      body:    JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(`Resend ${res.status}: ${JSON.stringify(data)}`);
@@ -51,8 +60,10 @@ async function send({ to, subject, html }) {
     return data;
   }
 
-  // SMTP
-  const info = await getSmtp().sendMail({ from: FROM, to: recipients.join(', '), subject, html });
+  // SMTP (nodemailer)
+  const mail = { from: fromAddress, to: recipients.join(', '), subject, html };
+  if (replyTo) mail.replyTo = replyTo;      // nodemailer usa replyTo
+  const info = await getSmtp().sendMail(mail);
   console.log('[Email/SMTP] ✅ Enviado a', recipients.join(', '), '— MsgID:', info.messageId);
   return info;
 }
@@ -188,12 +199,21 @@ function buildPortalUrl(signatureId, signUrl) {
   return signUrl;
 }
 
-export async function sendSignatureRequest({ signatureId, signerName, signerEmail, documentName, signUrl, senderNote, senderName, expireDays }) {
+export async function sendSignatureRequest({ signatureId, signerName, signerEmail, documentName, signUrl, senderNote, senderName, senderEmail, expireDays }) {
   const portalUrl = buildPortalUrl(signatureId, signUrl);
+
+  // Construir From dinámico: "Juan García via MaxiDocs <noreply@maxidocs.app>"
+  const baseEmail   = extractEmail(FROM)
+  const fromDisplay = senderName
+    ? `${senderName} via MaxiDocs <${baseEmail}>`
+    : FROM
+
   await send({
     to:      signerEmail,
     subject: `✍️ Documento para firma: ${documentName}`,
     html:    signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, senderName, expireDays }),
+    from:    fromDisplay,
+    replyTo: senderEmail || undefined,   // Responder va directo al vendedor
   });
 }
 
