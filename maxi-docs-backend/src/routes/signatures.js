@@ -215,6 +215,9 @@ router.post('/send', requireEditor, async (req, res) => {
         senderName:   sender_name ?? document.owner_name ?? null,
         senderEmail:  document.owner_email ?? null,
         expireDays:   expire_days ? Number(expire_days) : null,
+        // ── Gmail del vendedor (si está conectado) ──
+        senderAccountId: accountId,
+        senderUserId:    document.monday_user_id || userId,
       }).catch(err => console.error('[Email] Error:', err.message));
     }
   }
@@ -321,7 +324,7 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
 
   const sigRes = await query(
     `SELECT s.*, d.pdf_url, d.pdf_content, d.name AS document_name, d.id AS document_id,
-            d.monday_account_id, d.owner_email, d.owner_name, s.signing_order
+            d.monday_account_id, d.monday_user_id, d.owner_email, d.owner_name, s.signing_order
      FROM signatures s JOIN documents d ON d.id = s.document_id
      WHERE s.id = $1`,
     [signatureId]
@@ -436,6 +439,9 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
       senderName:   sig.owner_name ?? null,
       senderEmail:  sig.owner_email ?? null,
       expireDays:   null,
+      // ── Gmail del vendedor original ──
+      senderAccountId: sig.monday_account_id,
+      senderUserId:    sig.monday_user_id,
     }).catch(err => console.error('[Email] Error next signer:', err.message));
 
     logEvent({
@@ -546,6 +552,9 @@ router.post('/bulk-send', requireEditor, async (req, res) => {
         senderNote:   sender_note ?? null,
         senderName:   sender_name ?? doc.owner_name ?? null,
         senderEmail:  doc.owner_email ?? null,
+        // ── Gmail del vendedor ──
+        senderAccountId: accountId,
+        senderUserId:    userId,
         expireDays:   expire_days ?? null,
       }).catch(() => {});
 

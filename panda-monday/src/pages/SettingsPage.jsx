@@ -24,6 +24,44 @@ export default function SettingsPage({ isAdmin }) {
   const [newHook, setNewHook]     = useState({ url: '', events: [...EVENTS] })
   const [addingHook, setAddingHook] = useState(false)
 
+  // ── Gmail integration ──────────────────────────────────────
+  const [gmail, setGmail] = useState({ loading: true, connected: false, email: null })
+  const [gmailMsg, setGmailMsg] = useState(null)   // success/error tras callback
+
+  async function reloadGmailStatus() {
+    try {
+      const r = await api.get('/api/integrations/gmail/status')
+      setGmail({ loading: false, connected: !!r.data.connected, email: r.data.email || null })
+    } catch {
+      setGmail({ loading: false, connected: false, email: null })
+    }
+  }
+
+  async function connectGmail() {
+    setGmailMsg(null)
+    try {
+      const r = await api.get('/api/integrations/gmail/connect')
+      if (r.data?.auth_url) {
+        window.location.href = r.data.auth_url
+      } else {
+        setGmailMsg({ type: 'error', text: 'No se recibió la URL de autorización' })
+      }
+    } catch (e) {
+      setGmailMsg({ type: 'error', text: e.response?.data?.error || e.message })
+    }
+  }
+
+  async function disconnectGmail() {
+    if (!confirm('¿Desconectar tu Gmail? Los próximos correos se enviarán desde el correo genérico de MaxiDocs.')) return
+    try {
+      await api.delete('/api/integrations/gmail/disconnect')
+      setGmail({ loading: false, connected: false, email: null })
+      setGmailMsg({ type: 'success', text: 'Gmail desconectado' })
+    } catch (e) {
+      setGmailMsg({ type: 'error', text: e.response?.data?.error || e.message })
+    }
+  }
+
   useEffect(() => {
     api.get('/api/settings').then(r => {
       const s = r.data
@@ -38,6 +76,18 @@ export default function SettingsPage({ isAdmin }) {
     }).catch(() => {})
 
     api.get('/api/settings/webhooks').then(r => setWebhooks(r.data)).catch(() => {})
+
+    // Detectar callback de OAuth Gmail
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('gmail') === 'connected') {
+      setGmailMsg({ type: 'success', text: `✅ Gmail conectado: ${params.get('email') || ''}` })
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (params.get('gmail') === 'error') {
+      setGmailMsg({ type: 'error', text: `❌ Error conectando Gmail: ${params.get('reason') || 'desconocido'}` })
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    reloadGmailStatus()
   }, [])
 
   async function handleSave(e) {
@@ -81,11 +131,89 @@ export default function SettingsPage({ isAdmin }) {
     <div className="page">
       <div className="page-header">
         <div>
-          <div className="page-title">Configuración</div>
-          <div className="page-subtitle">Branding, notificaciones y webhooks</div>
+          <div className="page-title">{isAdmin ? 'Configuración' : 'Mi cuenta'}</div>
+          <div className="page-subtitle">
+            {isAdmin
+              ? 'Branding, notificaciones, webhooks y tu correo de envío'
+              : 'Conecta tu correo de Gmail para que las cotizaciones salgan desde tu cuenta'}
+          </div>
         </div>
       </div>
 
+      {/* ── Mi correo (Gmail OAuth) ── */}
+      <div style={{
+        background: 'white', borderRadius: 10, border: '1px solid var(--border)',
+        overflow: 'hidden', marginBottom: 24,
+      }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>📧 Mi correo de envío</div>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
+            Conecta tu Gmail para que las cotizaciones salgan desde tu cuenta personal de @maxirent.com.mx
+          </div>
+        </div>
+        <div style={{ padding: 20 }}>
+          {gmailMsg && (
+            <div style={{
+              padding: '10px 14px', borderRadius: 6, marginBottom: 14, fontSize: 13,
+              background: gmailMsg.type === 'success' ? '#e6f4ec' : '#fdecec',
+              color:      gmailMsg.type === 'success' ? '#1f7a3a' : '#b91c1c',
+              border: `1px solid ${gmailMsg.type === 'success' ? '#a7d5b5' : '#f5c2c2'}`,
+            }}>
+              {gmailMsg.text}
+            </div>
+          )}
+
+          {gmail.loading ? (
+            <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>Cargando…</div>
+          ) : gmail.connected ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: '50%', background: '#e6f4ec',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+                }}>✅</div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Conectado: <span style={{ color: '#0073ea' }}>{gmail.email}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                    Las cotizaciones y correos de firma se enviarán desde esta cuenta.
+                  </div>
+                </div>
+              </div>
+              <button onClick={disconnectGmail} className="btn btn-secondary btn-sm">
+                <IconTrash /> Desconectar
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: '50%', background: '#f0f4ff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+                }}>📭</div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Sin Gmail conectado
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                    Los correos se envían desde la cuenta genérica de MaxiDocs.
+                  </div>
+                </div>
+              </div>
+              <button onClick={connectGmail} className="btn btn-primary">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ marginRight: 4 }}>
+                  <path d="M22 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5v-13A1.5 1.5 0 0 1 3.5 4h17A1.5 1.5 0 0 1 22 5.5zM4 6.4v.7l8 5.3 8-5.3v-.7H4zm0 2.9V18h16V9.3L12 14.6 4 9.3z"/>
+                </svg>
+                Conectar Gmail
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Secciones admin-only: branding, webhooks */}
+      {isAdmin && (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
 
         {/* ── Branding ── */}
@@ -213,6 +341,7 @@ export default function SettingsPage({ isAdmin }) {
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

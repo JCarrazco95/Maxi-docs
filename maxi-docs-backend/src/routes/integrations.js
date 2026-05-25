@@ -6,12 +6,107 @@
  */
 import { Router } from 'express';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import { fillTemplate, generatePdf, wrapDocumentHtml } from '../services/pdfService.js';
 import { uploadPdf } from '../services/storageService.js';
 import { sendSignatureRequest } from '../services/emailService.js';
+import {
+  buildAuthUrl,
+  exchangeCodeForTokens,
+  emailFromIdToken,
+  saveIntegration,
+  getIntegration,
+  deleteIntegration,
+} from '../services/gmailService.js';
 
 const router = Router();
+const JWT_SECRET    = process.env.JWT_SECRET || 'change-in-production';
+const FRONTEND_URL  = process.env.FRONTEND_URL || 'http://localhost:8301';
+
+// ═════════════════════════════════════════════════════════════════
+// GMAIL OAUTH — Conectar la cuenta de Google del vendedor
+// ═════════════════════════════════════════════════════════════════
+
+// GET /api/integrations/gmail/connect — devuelve la URL de consentimiento Google
+// El frontend hace window.location.href = auth_url para iniciar el flujo.
+router.get('/gmail/connect', (req, res) => {
+  const { accountId, userId } = req.mondayContext;
+  if (!accountId || accountId === 'dev') {
+    return res.status(400).json({ error: 'Falta contexto de Monday (account)' });
+  }
+  // state firmado con JWT — sobrevive el round-trip a Google
+  const state = jwt.sign(
+    { accountId: String(accountId), userId: String(userId), purpose: 'gmail-oauth' },
+    JWT_SECRET,
+    { expiresIn: '10m' }
+  );
+  try {
+    const auth_url = buildAuthUrl(state);
+    res.json({ auth_url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/integrations/gmail/callback — Google nos envía el code aquí
+// NOTA: este endpoint NO viene con headers de Monday (lo invoca Google directamente),
+// por eso confiamos en el state firmado para identificar al usuario.
+router.get('/gmail/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  if (error)  return res.redirect(`${FRONTEND_URL}/?gmail=error&reason=${encodeURIComponent(error)}`);
+  if (!code || !state) return res.redirect(`${FRONTEND_URL}/?gmail=error&reason=missing_params`);
+
+  let decoded;
+  try {
+    decoded = jwt.verify(state, JWT_SECRET);
+    if (decoded.purpose !== 'gmail-oauth') throw new Error('purpose');
+  } catch (e) {
+    return res.redirect(`${FRONTEND_URL}/?gmail=error&reason=invalid_state`);
+  }
+
+  try {
+    const tokens = await exchangeCodeForTokens(code);
+    if (!tokens.refresh_token) {
+      // Sin refresh_token no podemos seguir enviando. Suele pasar si el usuario ya
+      // había autorizado y Google no lo regenera. El prompt=consent del authUrl lo evita.
+      return res.redirect(`${FRONTEND_URL}/?gmail=error&reason=no_refresh_token`);
+    }
+    const email = emailFromIdToken(tokens.id_token) || 'desconocido@gmail.com';
+
+    await saveIntegration({
+      accountId:    decoded.accountId,
+      userId:       decoded.userId,
+      email,
+      refreshToken: tokens.refresh_token,
+      scopes:       tokens.scope,
+    });
+
+    res.redirect(`${FRONTEND_URL}/?gmail=connected&email=${encodeURIComponent(email)}`);
+  } catch (e) {
+    console.error('[Gmail OAuth callback]', e);
+    res.redirect(`${FRONTEND_URL}/?gmail=error&reason=${encodeURIComponent(e.message)}`);
+  }
+});
+
+// GET /api/integrations/gmail/status — saber si el usuario actual tiene Gmail conectado
+router.get('/gmail/status', async (req, res) => {
+  const { accountId, userId } = req.mondayContext;
+  const integ = await getIntegration(accountId, userId);
+  if (!integ) return res.json({ connected: false });
+  res.json({
+    connected:    true,
+    email:        integ.email,
+    connected_at: integ.connected_at,
+  });
+});
+
+// DELETE /api/integrations/gmail/disconnect — desconectar
+router.delete('/gmail/disconnect', async (req, res) => {
+  const { accountId, userId } = req.mondayContext;
+  await deleteIntegration(accountId, userId);
+  res.json({ ok: true });
+});
 
 // ── Middleware de API Key ────────────────────────────────────────
 async function apiKeyAuth(req, res, next) {

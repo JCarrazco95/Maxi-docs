@@ -265,6 +265,25 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_account ON api_keys(monday_account_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash    ON api_keys(key_hash);
 
 -- =================================================================
+-- USER_EMAIL_INTEGRATIONS — OAuth Gmail/Outlook por usuario de Monday
+-- Permite enviar correos desde la cuenta personal del vendedor
+-- =================================================================
+CREATE TABLE IF NOT EXISTS user_email_integrations (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  monday_account_id  VARCHAR(100) NOT NULL,
+  monday_user_id     VARCHAR(100) NOT NULL,
+  provider           VARCHAR(20)  NOT NULL DEFAULT 'gmail',  -- gmail | outlook (futuro)
+  email              VARCHAR(255) NOT NULL,                  -- cuenta conectada
+  refresh_token      TEXT         NOT NULL,                  -- cifrado AES con APP_ENCRYPTION_KEY
+  scopes             TEXT,                                   -- scopes otorgados
+  connected_at       TIMESTAMPTZ DEFAULT NOW(),
+  last_used_at       TIMESTAMPTZ,
+  UNIQUE (monday_account_id, monday_user_id, provider)
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_integ_user ON user_email_integrations(monday_account_id, monday_user_id);
+
+-- =================================================================
 -- EMBED_TOKENS — JWT revocables para firma embebida
 -- =================================================================
 CREATE TABLE IF NOT EXISTS embed_tokens (
