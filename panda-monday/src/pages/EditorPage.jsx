@@ -316,14 +316,16 @@ export default function EditorPage() {
             .then(mondayRes => {
               const mondayVals = mondayRes.data?.values ?? {}
 
-              // Combinar: valores de URL params tienen prioridad sobre Monday
-              const merged = { ...mondayVals, ...fieldValues }
-              setVarValues(merged)
-
-              // Guardar vars pendientes — se aplican al editor cuando esté listo
-              if (Object.keys(mondayVals).length > 0) {
-                setPendingMondayVars(merged)
-              }
+              // Combinar respetando prioridad y PRESERVANDO autoVars (fecha, fecha_vigencia, ejecutivo)
+              // que la llamada paralela a /api/monday/me pudo haber seteado antes.
+              // Prioridad: mondayVals (item) < prev (autoVars del vendedor + fechas) < fieldValues (URL params)
+              setVarValues(prev => {
+                const merged = { ...mondayVals, ...prev, ...fieldValues }
+                if (Object.keys(mondayVals).length > 0) {
+                  setPendingMondayVars(merged)
+                }
+                return merged
+              })
 
               // Auto-poblar firmante con el contacto de Monday
               const clientEmail = mondayVals.correo_electronico || mondayVals.email || ''
