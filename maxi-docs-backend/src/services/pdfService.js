@@ -202,7 +202,11 @@ export async function generatePdf(html) {
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' },
+      // Márgenes 0 → la página renderiza full-bleed (borde a borde).
+      // El padding visual para el contenido viene del CSS de .document-body
+      // (ver wrapDocumentHtml). Esto permite que headers/footers/imágenes ad
+      // lleguen literalmente al borde físico del A4.
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
     });
 
     return pdf;
@@ -268,11 +272,15 @@ export function wrapDocumentHtml(contentHtml, title = 'Documento') {
           color: #222;
           background: white;
         }
-        /* El template define su propio layout — no restringir el ancho */
+        /* Puppeteer ya no aplica márgenes (margin: 0 en page.pdf()).
+           Aquí simulamos los 15mm de margen visual para documentos viejos
+           que asumen ese espacio en su contenido. Templates nuevos que
+           quieran ir full-bleed pueden romper este padding con .mr y
+           margin:-15mm + width:210mm en su propio bloque <style>. */
         .document-body {
           max-width: 100%;
           margin: 0;
-          padding: 0;
+          padding: 15mm;
         }
         h1 { font-size: 18pt; margin-bottom: 16px; }
         h2 { font-size: 14pt; margin: 20px 0 10px; }

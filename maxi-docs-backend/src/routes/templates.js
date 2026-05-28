@@ -117,45 +117,48 @@ router.post('/seed', async (req, res) => {
 
   const content_html = `<style>
   .mr, .mr * { box-sizing: border-box; }
-  .mr { font-family: Arial, Helvetica, sans-serif; font-size:9.5pt; color:#222; }
-  /* ── Layout por página: cada .mr-page ocupa al menos una hoja A4 completa ──
-     A4 = 297mm. Puppeteer aplica 15mm de margen arriba y abajo → área útil 267mm.
-     Usamos flex column con min-height 267mm; el footer recibe margin-top:auto
-     para empujarse al borde inferior aunque el contenido sea corto. */
+  /* ── Romper el padding de .document-body (15mm) para ir full-bleed ──
+     Puppeteer ahora renderiza con margin:0 (full A4 = 210x297mm) y
+     wrapDocumentHtml() aplica padding:15mm en .document-body para que
+     documentos viejos sigan teniendo márgenes. Aquí rompemos ese padding:
+     margin:-15mm en .mr cancela los 15mm de cada lado, y width:210mm
+     fija el ancho total al A4 completo. */
+  .mr {
+    margin: -15mm;
+    width: 210mm;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9.5pt;
+    color: #222;
+  }
+  /* ── Cada .mr-page es una hoja A4 completa (297mm de alto) ──
+     Flex column con el footer empujado al bottom con margin-top:auto.
+     Si el contenido es más alto que 297mm, page-break sucede naturalmente
+     y el footer queda al final del bloque (último page de esa sección). */
   .mr-page {
     display: flex;
     flex-direction: column;
-    min-height: 267mm;
+    width: 100%;
+    min-height: 297mm;
   }
-  .mr-page-content { flex: 1 1 auto; min-height: 0; }
-  /* ── Full-bleed (borde a borde A4) ──
-     Ancho EXPLÍCITO 210mm para que el browser NO use el tamaño natural del PNG
-     (que es mucho mayor). Negative margins de -15mm sacan la imagen fuera del
-     área de Puppeteer hasta los bordes físicos de la página A4. */
-  .mr-full-bleed {
-    display: block;
-    width: 210mm;
-    height: auto;
-    margin-left: -15mm;
-    margin-right: -15mm;
+  .mr-page-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 10mm 15mm;     /* margen visual del contenido respecto a header/footer y bordes */
   }
-  /* Header pegado al borde superior */
-  .mr-page-header { margin-top: -15mm; margin-bottom: 6px; }
-  /* Footer empujado al borde inferior */
-  .mr-page-footer { margin-top: auto; margin-bottom: -15mm; }
-  /* ── Página publicitaria: cubre la hoja A4 completa (210×297mm) ──
-     overflow:hidden + object-fit:cover garantizan que la imagen llene el
-     rectángulo sin deformarse aunque su aspect ratio difiera ligeramente. */
+  /* Header y footer ocupan el ancho completo de la página (= .mr-page = 210mm) */
+  .mr-page-header { display: block; width: 100%; height: auto; }
+  .mr-page-footer { display: block; width: 100%; height: auto; margin-top: auto; }
+  /* ── Página publicitaria: hoja A4 completa con imagen llenando 100% ──
+     object-fit:cover garantiza llenar sin deformar aunque el aspect ratio
+     del PNG difiera ligeramente de 210:297. */
   .mr-ad-page {
     page-break-before: always;
     page-break-inside: avoid;
-    display: block;
-    width: 210mm;
+    width: 100%;
     height: 297mm;
-    margin: -15mm;
     overflow: hidden;
   }
-  .mr-ad-page img { display:block; width:100%; height:100%; object-fit:cover; }
+  .mr-ad-page img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .mr-header-info { display:flex; justify-content:space-between; align-items:flex-start; margin:0 0 10px; font-size:9.5pt; }
   .mr-bold { font-weight:700; }
   .mr-intro { font-size:9.5pt; line-height:1.55; margin:10px 0 14px; text-align:justify; }
@@ -176,7 +179,7 @@ router.post('/seed', async (req, res) => {
 
 <!-- ══════ PÁGINA 1 ══════ -->
 <div class="mr-page">
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-01.png" class="mr-full-bleed mr-page-header" />
+  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-01.png" class="mr-page-header" />
   <div class="mr-page-content">
     <div class="mr-header-info">
       <div>
@@ -204,7 +207,7 @@ router.post('/seed', async (req, res) => {
     <div class="mr-firma-box"></div>
     <p class="mr-nota">**Nota: La firma no implica compromiso de compra. Vigencia 15 días.</p>
   </div>
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" class="mr-full-bleed mr-page-footer" />
+  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" class="mr-page-footer" />
 </div>
 
 <!-- ══════ PÁGINA 2 ══════ -->
@@ -237,7 +240,7 @@ router.post('/seed', async (req, res) => {
       <p style="margin:2px 0;">{{correo_electronico}}</p>
     </div>
   </div>
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" class="mr-full-bleed mr-page-footer" />
+  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" class="mr-page-footer" />
 </div>
 
 <!-- ══════ PÁGINA 3 — PUBLICITARIA (full A4) ══════ -->
