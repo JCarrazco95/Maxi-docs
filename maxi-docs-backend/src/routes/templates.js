@@ -118,20 +118,24 @@ router.post('/seed', async (req, res) => {
   const content_html = `<style>
   .mr, .mr * { box-sizing: border-box; }
   .mr { font-family: Arial, Helvetica, sans-serif; font-size:9.5pt; color:#222; }
-  /* ── Layout por página: flex column para empujar el footer al bottom ──
-     min-height = A4 (297mm) menos los márgenes de Puppeteer (15mm top + 15mm bottom = 30mm).
-     Cada bloque .mr-page ocupa al menos una página completa. */
+  /* ── Layout por página: cada .mr-page ocupa al menos una hoja A4 completa ──
+     A4 = 297mm. Puppeteer aplica 15mm de margen arriba y abajo → área útil 267mm.
+     Usamos flex column con min-height 267mm; el footer recibe margin-top:auto
+     para empujarse al borde inferior aunque el contenido sea corto. */
   .mr-page {
     display: flex;
     flex-direction: column;
     min-height: 267mm;
   }
-  .mr-page-content { flex: 1; }
-  /* ── Full-bleed: rompe los márgenes de Puppeteer (15mm a cada lado)
-     para que la imagen vaya de borde a borde de la página A4 ── */
+  .mr-page-content { flex: 1 1 auto; min-height: 0; }
+  /* ── Full-bleed (borde a borde A4) ──
+     Ancho EXPLÍCITO 210mm para que el browser NO use el tamaño natural del PNG
+     (que es mucho mayor). Negative margins de -15mm sacan la imagen fuera del
+     área de Puppeteer hasta los bordes físicos de la página A4. */
   .mr-full-bleed {
     display: block;
-    width: auto;
+    width: 210mm;
+    height: auto;
     margin-left: -15mm;
     margin-right: -15mm;
   }
@@ -139,12 +143,16 @@ router.post('/seed', async (req, res) => {
   .mr-page-header { margin-top: -15mm; margin-bottom: 6px; }
   /* Footer empujado al borde inferior */
   .mr-page-footer { margin-top: auto; margin-bottom: -15mm; }
-  /* Página publicitaria: imagen A4 completa, sin márgenes en los 4 lados */
+  /* ── Página publicitaria: cubre la hoja A4 completa (210×297mm) ──
+     overflow:hidden + object-fit:cover garantizan que la imagen llene el
+     rectángulo sin deformarse aunque su aspect ratio difiera ligeramente. */
   .mr-ad-page {
     page-break-before: always;
-    margin: -15mm;
-    height: 297mm;
+    page-break-inside: avoid;
+    display: block;
     width: 210mm;
+    height: 297mm;
+    margin: -15mm;
     overflow: hidden;
   }
   .mr-ad-page img { display:block; width:100%; height:100%; object-fit:cover; }
