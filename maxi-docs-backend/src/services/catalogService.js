@@ -153,31 +153,50 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
   if (tableType === 'tarifas') {
     headRow = `<tr style="${hdr}">${TH('TIPO DE UNIDAD')}${TH('CANT.','center')}${TH('DEDUCIBLE','center')}${TH('RENTA DIARIA','right')}${TH('RENTA MENSUAL','right')}${TH('ENTREGA','right')}${TH('RECOLECCIÓN','right')}</tr>`;
     colSpanTotal = 6;
-    let totalMensual = 0;
+    let totalMensual = 0, totalEntrega = 0, totalRecoleccion = 0;
     bodyRows = items.map(i => {
-      const qty      = Number(i.quantity) || 1;
-      const diaria   = Number(i.dailyRate) || 0;
-      const mensual  = diaria * 30 * qty;
-      const dedPct   = Number(i.deductible) || 0;
-      totalMensual  += mensual;
-      subtotal      += mensual;  // deducible es solo informativo, no suma al total
+      const qty       = Number(i.quantity) || 1;
+      const diaria    = Number(i.dailyRate) || 0;
+      const mensual   = diaria * 30 * qty;
+      const dedPct    = Number(i.deductible) || 0;
+      const entrega   = Number(i.delivery)  || 0;
+      const recolecc  = Number(i.retrieval) || 0;
+      totalMensual     += mensual;
+      totalEntrega     += entrega;
+      totalRecoleccion += recolecc;
+      // Subtotal real del vehículo = renta mensual + entrega + recolección
+      // (deducible es solo informativo, no suma al total)
+      subtotal         += mensual + entrega + recolecc;
       return `<tr style="-webkit-print-color-adjust:exact;print-color-adjust:exact;">
         ${TD(i.name)}
         ${TD(qty,'center')}
         ${TD(`${dedPct}%`,'center')}
         ${TD(fmt(diaria),'right')}
         ${TD(fmt(diaria * 30),'right','font-weight:700;color:#1B3055;')}
-        ${TD(fmt(Number(i.delivery)||0),'right')}
-        ${TD(fmt(Number(i.retrieval)||0),'right')}
+        ${TD(fmt(entrega),'right')}
+        ${TD(fmt(recolecc),'right')}
       </tr>`;
     }).join('');
+    const grandTotal = totalMensual + totalEntrega + totalRecoleccion;
+    // Filas extra del pie solo si hay valor (>0) para no saturar visualmente
+    const extraRows = `
+      ${totalEntrega > 0 ? `
+        <tr><td colspan="6" style="text-align:right;padding:4px 10px;font-size:9pt;color:#676879;">Entrega</td>
+            <td style="text-align:right;padding:4px 10px;font-size:9pt;color:#676879;">${fmt(totalEntrega)}</td></tr>` : ''}
+      ${totalRecoleccion > 0 ? `
+        <tr><td colspan="6" style="text-align:right;padding:4px 10px;font-size:9pt;color:#676879;">Recolección</td>
+            <td style="text-align:right;padding:4px 10px;font-size:9pt;color:#676879;">${fmt(totalRecoleccion)}</td></tr>` : ''}
+    `;
     return `${tblStart}
       <thead>${headRow}</thead>
       <tbody>${bodyRows}</tbody>
       <tfoot>
+        <tr><td colspan="6" style="text-align:right;padding:4px 10px;font-size:9pt;color:#676879;">Total renta mensual</td>
+            <td style="text-align:right;padding:4px 10px;font-size:9pt;color:#676879;">${fmt(totalMensual)}</td></tr>
+        ${extraRows}
         <tr style="${footStyle}">
-          <td colspan="6" style="text-align:right;padding:8px 10px;font-weight:800;font-size:10pt;">Total renta mensual</td>
-          <td style="text-align:right;padding:8px 10px;font-weight:900;font-size:12pt;color:#F5A000;">${fmt(totalMensual)}</td>
+          <td colspan="6" style="text-align:right;padding:8px 10px;font-weight:800;font-size:10pt;">Total</td>
+          <td style="text-align:right;padding:8px 10px;font-weight:900;font-size:12pt;color:#F5A000;">${fmt(grandTotal)}</td>
         </tr>
       </tfoot>
     </table>`;
