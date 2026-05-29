@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import nodemailer from 'nodemailer';
+import { hasGmailConnected, sendViaGmail } from './gmailService.js';
 
 const RESEND_KEY  = process.env.RESEND_API_KEY;
 const SMTP_HOST   = process.env.SMTP_HOST;
@@ -199,9 +200,36 @@ function buildPortalUrl(signatureId, signUrl) {
   return signUrl;
 }
 
-export async function sendSignatureRequest({ signatureId, signerName, signerEmail, documentName, signUrl, senderNote, senderName, senderEmail, expireDays }) {
+export async function sendSignatureRequest({
+  signatureId, signerName, signerEmail, documentName, signUrl,
+  senderNote, senderName, senderEmail, expireDays,
+  senderAccountId, senderUserId,   // ← NUEVO: para enviar desde Gmail del vendedor
+}) {
   const portalUrl = buildPortalUrl(signatureId, signUrl);
+  const subject   = `✍️ Documento para firma: ${documentName}`;
+  const html      = signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, senderName, expireDays });
 
+  // ── 1. Intentar enviar desde Gmail del vendedor si está conectado ──
+  if (senderAccountId && senderUserId) {
+    try {
+      const hasGmail = await hasGmailConnected(senderAccountId, senderUserId);
+      if (hasGmail) {
+        return await sendViaGmail({
+          accountId: senderAccountId,
+          userId:    senderUserId,
+          to:        signerEmail,
+          subject,
+          html,
+          fromName:  senderName || 'MAXIRent',
+          replyTo:   senderEmail || undefined,
+        });
+      }
+    } catch (e) {
+      console.warn('[Email] Gmail del vendedor falló, fallback a Resend:', e.message);
+    }
+  }
+
+  // ── 2. Fallback al provider configurado (Resend/SMTP) ──
   // Construir From dinámico: "Juan García via MaxiDocs <noreply@maxidocs.app>"
   const baseEmail   = extractEmail(FROM)
   const fromDisplay = senderName
@@ -210,10 +238,10 @@ export async function sendSignatureRequest({ signatureId, signerName, signerEmai
 
   await send({
     to:      signerEmail,
-    subject: `✍️ Documento para firma: ${documentName}`,
-    html:    signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, senderName, expireDays }),
+    subject,
+    html,
     from:    fromDisplay,
-    replyTo: senderEmail || undefined,   // Responder va directo al vendedor
+    replyTo: senderEmail || undefined,
   });
 }
 

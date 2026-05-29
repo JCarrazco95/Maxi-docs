@@ -109,11 +109,11 @@ export default function App() {
         <button className={`tab ${activeTab === 'catalog' ? 'active' : ''}`} onClick={() => setActiveTab('catalog')}>
           <IconCatalog /> Catálogo
         </button>
-        {isAdmin && (
-          <button className={`tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
-            <IconSettings /> Config.
-          </button>
-        )}
+        {/* Settings visible para todos: vendedores pueden conectar su Gmail.
+            Las secciones admin-only se ocultan dentro de SettingsPage según isAdmin. */}
+        <button className={`tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
+          <IconSettings /> {isAdmin ? 'Config.' : 'Mi cuenta'}
+        </button>
       </nav>
 
       <div className="tab-content">
