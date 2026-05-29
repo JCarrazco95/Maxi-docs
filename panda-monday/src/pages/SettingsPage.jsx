@@ -41,11 +41,59 @@ export default function SettingsPage({ isAdmin }) {
     setGmailMsg(null)
     try {
       const r = await api.get('/api/integrations/gmail/connect')
-      if (r.data?.auth_url) {
-        window.location.href = r.data.auth_url
-      } else {
+      if (!r.data?.auth_url) {
         setGmailMsg({ type: 'error', text: 'No se recibió la URL de autorización' })
+        return
       }
+      // La app corre dentro de un iframe de Monday → Google bloquea OAuth en iframes
+      // (X-Frame-Options + COOP). Abrimos en pestaña nueva del navegador para que
+      // el flujo viva fuera del iframe.
+      const popup = window.open(
+        r.data.auth_url,
+        'gmail-oauth',
+        'width=520,height=720,left=100,top=80'
+      )
+      if (!popup || popup.closed) {
+        setGmailMsg({
+          type: 'error',
+          text: 'El navegador bloqueó la ventana emergente. Permite popups para este sitio y vuelve a intentar.',
+        })
+        return
+      }
+      setGmailMsg({ type: 'info', text: '⏳ Autoriza en la ventana que se abrió. Esperando…' })
+      // Polling al backend cada 2s — detecta la conexión aunque la postMessage falle
+      // (puede pasar si Google rompe window.opener con COOP, o si el usuario cerró).
+      const startedAt = Date.now()
+      const poll = setInterval(async () => {
+        try {
+          const s = await api.get('/api/integrations/gmail/status')
+          if (s.data?.connected) {
+            clearInterval(poll)
+            setGmail({ loading: false, connected: true, email: s.data.email })
+            setGmailMsg({ type: 'success', text: `✅ Conectado: ${s.data.email}` })
+            try { popup.close() } catch {}
+            return
+          }
+        } catch {}
+        // Timeout 3 min
+        if (Date.now() - startedAt > 3 * 60 * 1000) {
+          clearInterval(poll)
+          setGmailMsg({ type: 'error', text: 'Tiempo de espera agotado. Intenta de nuevo.' })
+        }
+        // Si el usuario cerró la ventana, también paramos
+        if (popup.closed) {
+          clearInterval(poll)
+          // No mostrar error si ya hay éxito; verificar una última vez
+          api.get('/api/integrations/gmail/status').then(s2 => {
+            if (s2.data?.connected) {
+              setGmail({ loading: false, connected: true, email: s2.data.email })
+              setGmailMsg({ type: 'success', text: `✅ Conectado: ${s2.data.email}` })
+            } else {
+              setGmailMsg({ type: 'error', text: 'Conexión cancelada o no completada.' })
+            }
+          }).catch(() => {})
+        }
+      }, 2000)
     } catch (e) {
       setGmailMsg({ type: 'error', text: e.response?.data?.error || e.message })
     }
@@ -77,7 +125,7 @@ export default function SettingsPage({ isAdmin }) {
 
     api.get('/api/settings/webhooks').then(r => setWebhooks(r.data)).catch(() => {})
 
-    // Detectar callback de OAuth Gmail
+    // Detectar callback de OAuth Gmail (compat con flujo viejo basado en URL)
     const params = new URLSearchParams(window.location.search)
     if (params.get('gmail') === 'connected') {
       setGmailMsg({ type: 'success', text: `✅ Gmail conectado: ${params.get('email') || ''}` })
@@ -87,7 +135,23 @@ export default function SettingsPage({ isAdmin }) {
       window.history.replaceState({}, '', window.location.pathname)
     }
 
+    // Listener: el popup de OAuth posts un message cuando termina.
+    // Esto es el camino rápido. El polling en connectGmail() es el fallback
+    // por si postMessage falla (Google COOP, popup en otra pestaña, etc.).
+    function onMessage(ev) {
+      const d = ev?.data
+      if (!d || d.type !== 'gmail-oauth') return
+      if (d.status === 'connected') {
+        setGmail({ loading: false, connected: true, email: d.email })
+        setGmailMsg({ type: 'success', text: `✅ Conectado: ${d.email}` })
+      } else if (d.status === 'error') {
+        setGmailMsg({ type: 'error', text: `❌ Error: ${d.reason || 'desconocido'}` })
+      }
+    }
+    window.addEventListener('message', onMessage)
+
     reloadGmailStatus()
+    return () => window.removeEventListener('message', onMessage)
   }, [])
 
   async function handleSave(e) {
@@ -155,9 +219,9 @@ export default function SettingsPage({ isAdmin }) {
           {gmailMsg && (
             <div style={{
               padding: '10px 14px', borderRadius: 6, marginBottom: 14, fontSize: 13,
-              background: gmailMsg.type === 'success' ? '#e6f4ec' : '#fdecec',
-              color:      gmailMsg.type === 'success' ? '#1f7a3a' : '#b91c1c',
-              border: `1px solid ${gmailMsg.type === 'success' ? '#a7d5b5' : '#f5c2c2'}`,
+              background: gmailMsg.type === 'success' ? '#e6f4ec' : gmailMsg.type === 'info' ? '#e0f2fe' : '#fdecec',
+              color:      gmailMsg.type === 'success' ? '#1f7a3a' : gmailMsg.type === 'info' ? '#075985' : '#b91c1c',
+              border: `1px solid ${gmailMsg.type === 'success' ? '#a7d5b5' : gmailMsg.type === 'info' ? '#bae6fd' : '#f5c2c2'}`,
             }}>
               {gmailMsg.text}
             </div>
