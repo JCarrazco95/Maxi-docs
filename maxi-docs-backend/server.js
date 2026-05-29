@@ -53,20 +53,6 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'maxi-docs-backend', timestamp: new Date().toISOString() });
 });
 
-// ── Migración de base de datos (endpoint temporal) ───────────────
-app.post('/run-migrate', async (_req, res) => {
-  try {
-    const { readFileSync } = await import('fs');
-    const { join: pjoin, dirname: pdirname } = await import('path');
-    const { fileURLToPath: pftu } = await import('url');
-    const __dir = pdirname(pftu(import.meta.url));
-    const sql = readFileSync(pjoin(__dir, 'src/db/schema.sql'), 'utf8');
-    await query(sql);
-    res.json({ ok: true, message: 'Migraciones completadas' });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
 
 // ── Rutas de la API ───────────────────────────────────────────────
 app.use('/api', extractMondayContext);
