@@ -327,7 +327,10 @@ CREATE TABLE IF NOT EXISTS catalog_categories (
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_cat_cat_account ON catalog_categories(monday_account_id);
-ALTER TABLE catalog_categories ADD CONSTRAINT IF NOT EXISTS uq_cat_account_name UNIQUE (monday_account_id, name);
+DO $$ BEGIN
+  ALTER TABLE catalog_categories ADD CONSTRAINT uq_cat_account_name UNIQUE (monday_account_id, name);
+EXCEPTION WHEN duplicate_table THEN NULL;
+END; $$;
 
 -- =================================================================
 -- CATALOG_PRODUCTS — Productos / servicios del catálogo
