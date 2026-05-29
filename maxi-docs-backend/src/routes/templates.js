@@ -117,6 +117,7 @@ router.post('/seed', async (req, res) => {
 
   const content_html = `<style>
   @page { margin: 0; }
+  html, body { margin: 0 !important; padding: 0 !important; }
   .mr, .mr * { box-sizing: border-box; }
   .mr { font-family: Arial, Helvetica, sans-serif; font-size:9.5pt; color:#222; }
   /* ── Layout por página: márgenes manejados en CSS, @page anula los de Puppeteer ── */
