@@ -205,13 +205,13 @@ export async function generatePdf(html) {
 
     await page.setContent(htmlReady, { waitUntil: 'networkidle0' });
 
-    // Si el template define su propio @page, dejamos que el CSS controle los
-    // márgenes (margen 0 en Puppeteer). Puppeteer ignora @page si se le pasa un
-    // margin explícito, así que solo aplicamos los 15mm por defecto cuando el
-    // template NO declara @page.
-    const hasOwnPageRule = /@page\b/.test(html);
-    const margin = hasOwnPageRule
-      ? { top: '0', right: '0', bottom: '0', left: '0' }
+    // Si el template define su propio @page o usa imágenes full-bleed, dejamos
+    // que el CSS controle los márgenes (margen 0 en Puppeteer). Puppeteer ignora
+    // el @page del CSS si se le pasa un margin explícito, así que solo aplicamos
+    // los 15mm por defecto cuando el template NO pide full-bleed.
+    const wantsFullBleed = /@page\b/.test(html) || /mr-full-bleed/.test(html);
+    const margin = wantsFullBleed
+      ? { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' }
       : { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' };
 
     const pdf = await page.pdf({

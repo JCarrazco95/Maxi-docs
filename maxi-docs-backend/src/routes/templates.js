@@ -123,7 +123,7 @@ router.post('/seed', async (req, res) => {
   .mr-page {
     display: flex;
     flex-direction: column;
-    min-height: 297mm;
+    min-height: 296mm;
   }
   .mr-page-content { flex: 1; padding: 0 15mm; }
   /* ── Full-bleed: 100% del ancho físico del A4 ── */
@@ -138,7 +138,7 @@ router.post('/seed', async (req, res) => {
   /* Página publicitaria: imagen A4 completa */
   .mr-ad-page {
     page-break-before: always;
-    height: 297mm;
+    height: 296mm;
     width: 100%;
     overflow: hidden;
   }
