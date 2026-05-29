@@ -116,35 +116,30 @@ router.post('/seed', async (req, res) => {
   ).catch(() => {});
 
   const content_html = `<style>
+  @page { margin: 0; }
   .mr, .mr * { box-sizing: border-box; }
   .mr { font-family: Arial, Helvetica, sans-serif; font-size:9.5pt; color:#222; }
-  /* ── Layout por página: flex column para empujar el footer al bottom ──
-     min-height = A4 (297mm) menos los márgenes de Puppeteer (15mm top + 15mm bottom = 30mm).
-     Cada bloque .mr-page ocupa al menos una página completa. */
+  /* ── Layout por página: márgenes manejados en CSS, @page anula los de Puppeteer ── */
   .mr-page {
     display: flex;
     flex-direction: column;
-    min-height: 267mm;
+    min-height: 297mm;
   }
-  .mr-page-content { flex: 1; }
-  /* ── Full-bleed: rompe los márgenes de Puppeteer (15mm a cada lado)
-     para que la imagen vaya de borde a borde de la página A4 ── */
+  .mr-page-content { flex: 1; padding: 0 15mm; }
+  /* ── Full-bleed: 100% del ancho físico del A4 ── */
   .mr-full-bleed {
     display: block;
-    width: 210mm;
-    margin-left: -15mm;
-    margin-right: -15mm;
+    width: 100%;
   }
   /* Header pegado al borde superior */
-  .mr-page-header { margin-top: -15mm; margin-bottom: 6px; }
+  .mr-page-header { margin-bottom: 6px; }
   /* Footer empujado al borde inferior */
-  .mr-page-footer { margin-top: auto; margin-bottom: -15mm; }
-  /* Página publicitaria: imagen A4 completa, sin márgenes en los 4 lados */
+  .mr-page-footer { margin-top: auto; }
+  /* Página publicitaria: imagen A4 completa */
   .mr-ad-page {
     page-break-before: always;
-    margin: -15mm;
     height: 297mm;
-    width: 210mm;
+    width: 100%;
     overflow: hidden;
   }
   .mr-ad-page img { display:block; width:100%; height:100%; object-fit:cover; }
@@ -200,7 +195,7 @@ router.post('/seed', async (req, res) => {
 </div>
 
 <!-- ══════ PÁGINA 2 ══════ -->
-<div class="mr-page" style="page-break-before:always;">
+<div class="mr-page" style="page-break-before:always; padding-top:15mm;">
   <div class="mr-page-content">
     <h3 class="mr-h3">Requisitos para entrega de unidades</h3>
     <ul class="mr-ul">
