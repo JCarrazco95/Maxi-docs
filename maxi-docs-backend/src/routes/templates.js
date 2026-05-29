@@ -131,7 +131,7 @@ router.post('/seed', async (req, res) => {
      para que la imagen vaya de borde a borde de la página A4 ── */
   .mr-full-bleed {
     display: block;
-    width: auto;
+    width: calc(100% + 30mm);
     margin-left: -15mm;
     margin-right: -15mm;
   }
