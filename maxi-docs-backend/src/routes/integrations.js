@@ -49,20 +49,66 @@ router.get('/gmail/connect', (req, res) => {
   }
 });
 
+// Página HTML auto-cerrable para el popup de OAuth.
+// La app está embebida en un iframe de Monday → Google bloquea OAuth en iframes.
+// Solución: abrimos el flow en pestaña nueva (frontend usa window.open), y aquí
+// devolvemos HTML que avisa al opener via postMessage + se cierra. El frontend
+// además hace polling a /gmail/status como fallback por si la postMessage falla.
+function oauthClosingPage({ ok, email, reason }) {
+  const payload = ok ? { type: 'gmail-oauth', status: 'connected', email }
+                     : { type: 'gmail-oauth', status: 'error', reason };
+  const title   = ok ? '✅ Gmail conectado' : '❌ Error al conectar Gmail';
+  const detail  = ok ? `Conectado: ${email}` : `Razón: ${reason || 'desconocida'}`;
+  return `<!DOCTYPE html><html lang="es"><head>
+<meta charset="UTF-8"><title>${title}</title>
+<style>
+  body{margin:0;font-family:Figtree,system-ui,sans-serif;background:#f6f7fb;
+       display:flex;align-items:center;justify-content:center;min-height:100vh;}
+  .card{background:white;border-radius:12px;padding:40px;max-width:420px;text-align:center;
+        box-shadow:0 8px 32px rgba(0,0,0,0.1);}
+  .icon{font-size:48px;margin-bottom:12px;}
+  h1{font-size:18px;color:#1B3055;margin:0 0 8px;}
+  p{font-size:13px;color:#676879;margin:0 0 20px;line-height:1.5;}
+  .btn{background:#1B3055;color:white;border:none;padding:10px 24px;border-radius:7px;
+       cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;}
+</style></head><body>
+<div class="card">
+  <div class="icon">${ok ? '✅' : '⚠️'}</div>
+  <h1>${title}</h1>
+  <p>${detail}</p>
+  <p style="font-size:11px;color:#9699a6;">Esta ventana se cerrará automáticamente.</p>
+  <button class="btn" onclick="window.close()">Cerrar ahora</button>
+</div>
+<script>
+  // Avisar al opener (la app dentro del iframe de Monday) que el OAuth terminó.
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(${JSON.stringify(payload)}, '*');
+    }
+  } catch (e) {}
+  // Auto-cerrar después de 1.5s — da tiempo a que el usuario lea el mensaje
+  setTimeout(() => { try { window.close(); } catch (e) {} }, 1500);
+</script>
+</body></html>`;
+}
+
 // GET /api/integrations/gmail/callback — Google nos envía el code aquí
 // NOTA: este endpoint NO viene con headers de Monday (lo invoca Google directamente),
 // por eso confiamos en el state firmado para identificar al usuario.
+// Responde con HTML auto-cerrable: NO redirect al frontend porque la pestaña
+// se abrió desde Monday y queremos cerrarla, no navegar.
 router.get('/gmail/callback', async (req, res) => {
   const { code, state, error } = req.query;
-  if (error)  return res.redirect(`${FRONTEND_URL}/?gmail=error&reason=${encodeURIComponent(error)}`);
-  if (!code || !state) return res.redirect(`${FRONTEND_URL}/?gmail=error&reason=missing_params`);
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  if (error)  return res.send(oauthClosingPage({ ok: false, reason: String(error) }));
+  if (!code || !state) return res.send(oauthClosingPage({ ok: false, reason: 'missing_params' }));
 
   let decoded;
   try {
     decoded = jwt.verify(state, JWT_SECRET);
     if (decoded.purpose !== 'gmail-oauth') throw new Error('purpose');
   } catch (e) {
-    return res.redirect(`${FRONTEND_URL}/?gmail=error&reason=invalid_state`);
+    return res.send(oauthClosingPage({ ok: false, reason: 'invalid_state' }));
   }
 
   try {
@@ -70,7 +116,7 @@ router.get('/gmail/callback', async (req, res) => {
     if (!tokens.refresh_token) {
       // Sin refresh_token no podemos seguir enviando. Suele pasar si el usuario ya
       // había autorizado y Google no lo regenera. El prompt=consent del authUrl lo evita.
-      return res.redirect(`${FRONTEND_URL}/?gmail=error&reason=no_refresh_token`);
+      return res.send(oauthClosingPage({ ok: false, reason: 'no_refresh_token' }));
     }
     const email = emailFromIdToken(tokens.id_token) || 'desconocido@gmail.com';
 
@@ -82,10 +128,10 @@ router.get('/gmail/callback', async (req, res) => {
       scopes:       tokens.scope,
     });
 
-    res.redirect(`${FRONTEND_URL}/?gmail=connected&email=${encodeURIComponent(email)}`);
+    res.send(oauthClosingPage({ ok: true, email }));
   } catch (e) {
     console.error('[Gmail OAuth callback]', e);
-    res.redirect(`${FRONTEND_URL}/?gmail=error&reason=${encodeURIComponent(e.message)}`);
+    res.send(oauthClosingPage({ ok: false, reason: e.message }));
   }
 });
 
