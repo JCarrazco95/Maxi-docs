@@ -7,7 +7,11 @@ const CLIENT_ID     = process.env.GOOGLE_CLIENT_ID
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET
 const REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI ||
   `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/integrations/gmail/callback`
-const SCOPE         = 'https://www.googleapis.com/auth/gmail.send'
+// Scopes:
+// - openid + email → Google nos devuelve id_token con el correo del usuario,
+//   y permite consultar /userinfo como fallback.
+// - gmail.send → permiso real para enviar correos via Gmail API.
+const SCOPE         = 'openid email https://www.googleapis.com/auth/gmail.send'
 
 // ── Cifrado simétrico del refresh_token ────────────────────────
 // AES-256-GCM. Clave derivada de APP_ENCRYPTION_KEY (min 32 chars en .env)
@@ -67,7 +71,7 @@ export async function exchangeCodeForTokens(code) {
   return data  // { access_token, refresh_token, expires_in, id_token, scope }
 }
 
-// ── Obtener email del usuario desde id_token (sin pedir scope extra) ──
+// ── Obtener email del usuario desde id_token (rápido, sin llamada extra) ──
 export function emailFromIdToken(idToken) {
   if (!idToken) return null
   const [, payload] = idToken.split('.')
@@ -76,6 +80,32 @@ export function emailFromIdToken(idToken) {
     const json = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
     return json.email || null
   } catch { return null }
+}
+
+// ── Fallback: consultar /userinfo con el access_token ──
+// Garantiza el email aunque el id_token venga sin él. Requiere scope 'email'.
+export async function fetchUserEmail(accessToken) {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.email || null
+  } catch {
+    return null
+  }
+}
+
+// ── Resolver email del usuario: probar id_token primero, luego userinfo ──
+export async function resolveUserEmail({ idToken, accessToken }) {
+  const fromId = emailFromIdToken(idToken)
+  if (fromId) return fromId
+  if (accessToken) {
+    const fromUserinfo = await fetchUserEmail(accessToken)
+    if (fromUserinfo) return fromUserinfo
+  }
+  return null
 }
 
 // ── Refresh access_token usando refresh_token guardado ────────
