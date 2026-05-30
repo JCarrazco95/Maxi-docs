@@ -14,7 +14,7 @@ import { sendSignatureRequest } from '../services/emailService.js';
 import {
   buildAuthUrl,
   exchangeCodeForTokens,
-  emailFromIdToken,
+  resolveUserEmail,
   saveIntegration,
   getIntegration,
   deleteIntegration,
@@ -118,7 +118,11 @@ router.get('/gmail/callback', async (req, res) => {
       // había autorizado y Google no lo regenera. El prompt=consent del authUrl lo evita.
       return res.send(oauthClosingPage({ ok: false, reason: 'no_refresh_token' }));
     }
-    const email = emailFromIdToken(tokens.id_token) || 'desconocido@gmail.com';
+    // Resolver el correo del usuario: id_token (rápido) con fallback a /userinfo
+    const email = await resolveUserEmail({
+      idToken:     tokens.id_token,
+      accessToken: tokens.access_token,
+    }) || 'desconocido@gmail.com';
 
     await saveIntegration({
       accountId:    decoded.accountId,
