@@ -160,9 +160,16 @@ export async function deleteIntegration(accountId, userId) {
   )
 }
 
+// RFC 2045 obliga a que el body con Content-Transfer-Encoding: base64
+// tenga líneas de máximo 76 caracteres. Outlook descarta el body si
+// no está wrapped (Gmail web es más permisivo y por eso pasaba allí).
+function chunkBase64(b64) {
+  return b64.match(/.{1,76}/g)?.join('\r\n') ?? b64
+}
+
 // ── Construir RFC 5322 message + enviar ────────────────────────
 function buildRawMessage({ from, to, subject, html, replyTo }) {
-  const boundary = `mxd-${Date.now().toString(36)}`
+  const bodyB64 = chunkBase64(Buffer.from(html, 'utf8').toString('base64'))
   const lines = [
     `From: ${from}`,
     `To: ${Array.isArray(to) ? to.join(', ') : to}`,
@@ -171,9 +178,9 @@ function buildRawMessage({ from, to, subject, html, replyTo }) {
     'MIME-Version: 1.0',
     `Content-Type: text/html; charset="UTF-8"`,
     'Content-Transfer-Encoding: base64',
-    '',
-    Buffer.from(html, 'utf8').toString('base64'),
-  ].filter(Boolean)
+    '',         // línea vacía obligatoria entre headers y body
+    bodyB64,
+  ].filter(v => v !== null && v !== undefined)
   return Buffer.from(lines.join('\r\n'), 'utf8').toString('base64url')
 }
 
