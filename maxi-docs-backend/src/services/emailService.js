@@ -118,12 +118,24 @@ function signatureRequestTemplate({ signerName, documentName, signUrl, senderNot
       <p style="margin:0;font-size:13px;color:#676879;font-style:italic;">"${senderNote}"</p>
     </div>` : ''}
 
-    <!-- CTA Button -->
+    <!-- CTA Button (Outlook-friendly: usa color sólido como fallback;
+         gradient se queda como upgrade visual en clients modernos) -->
     <div style="text-align:center;margin:28px 0;">
+      <!--[if mso]>
+      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"
+                   href="${signUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="13%" stroke="f" fillcolor="#0073ea">
+        <w:anchorlock/>
+        <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">
+          Firmar documento
+        </center>
+      </v:roundrect>
+      <![endif]-->
+      <!--[if !mso]><!-- -->
       <a href="${signUrl}"
-         style="display:inline-block;background:linear-gradient(135deg,#0073ea,#0060c0);color:white;text-decoration:none;padding:14px 36px;border-radius:6px;font-size:15px;font-weight:700;letter-spacing:0.2px;box-shadow:0 4px 12px rgba(0,115,234,0.35);">
-        ✍️ Firmar documento
+         style="display:inline-block;background-color:#0073ea;background-image:linear-gradient(135deg,#0073ea,#0060c0);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:6px;font-size:15px;font-weight:700;letter-spacing:0.2px;mso-padding-alt:0;">
+        <span style="color:#ffffff;">✍️ Firmar documento</span>
       </a>
+      <!--<![endif]-->
     </div>
 
     ${expiryText ? `<p style="text-align:center;font-size:12px;color:#9699a6;margin:0 0 24px;">${expiryText}</p>` : ''}
