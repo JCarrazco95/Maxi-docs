@@ -19,6 +19,7 @@ const COL_ETAPA      = 'deal_stage';
 const COL_EJECUTIVO  = 'deal_owner';
 const COL_FOLIO      = 'text_mktmgv5z';
 const COL_PDF_FILE   = 'archivo_mkmghcc4';
+const COL_EMAIL      = 'Email';   // Dirección de e-mail principal del contacto
 
 async function mondayGql(query, token) {
   const res = await fetch('https://api.monday.com/v2', {
@@ -31,13 +32,17 @@ async function mondayGql(query, token) {
   return data.data;
 }
 
-async function crearOportunidadEnMonday({ document, userId }) {
+async function crearOportunidadEnMonday({ document, userId, signerEmail }) {
   const token = process.env.MONDAY_API_TOKEN;
   if (!token) return;
 
-  // Si ya tiene item en Monday (creado al guardar PDF), no duplicar
+  // Si ya tiene item en Monday (creado al guardar PDF), no duplicamos —
+  // solo actualizamos el email del contacto al que se le envió la cotización.
   if (document.monday_doc_item_id) {
     console.log(`[Monday] Item ya existe: ${document.monday_doc_item_id}, sin duplicar`);
+    if (signerEmail) {
+      await actualizarEmailEnItemMonday(document.monday_doc_item_id, signerEmail, token).catch(() => {});
+    }
     return;
   }
 
@@ -58,6 +63,10 @@ async function crearOportunidadEnMonday({ document, userId }) {
     };
     if (userId && userId !== 'dev') {
       colValues[COL_EJECUTIVO] = { personsAndTeams: [{ id: Number(userId), kind: 'person' }] };
+    }
+    // Dirección de e-mail principal del contacto — al que se le envió la cotización
+    if (signerEmail) {
+      colValues[COL_EMAIL] = { email: signerEmail, text: signerEmail };
     }
 
     const mutation = `
@@ -87,6 +96,29 @@ async function crearOportunidadEnMonday({ document, userId }) {
     }
   } catch (e) {
     console.error('[Monday] Error creando oportunidad:', e.message);
+  }
+}
+
+// Actualiza solo la columna Email de un item de Monday ya existente.
+// Se usa cuando el item se creó antes (al guardar PDF) y ahora,
+// al enviar a firma, ya conocemos el correo del destinatario.
+async function actualizarEmailEnItemMonday(itemId, email, token) {
+  try {
+    const value = JSON.stringify({ email, text: email });
+    const mutation = `
+      mutation {
+        change_column_value(
+          board_id: ${OPORTUN_BOARD},
+          item_id: ${itemId},
+          column_id: "${COL_EMAIL}",
+          value: ${JSON.stringify(value)}
+        ) { id }
+      }
+    `;
+    await mondayGql(mutation, token);
+    console.log(`[Monday] Email actualizado en item ${itemId}: ${email}`);
+  } catch (e) {
+    console.error('[Monday] Error actualizando email:', e.message);
   }
 }
 
@@ -224,8 +256,10 @@ router.post('/send', requireEditor, async (req, res) => {
 
   await query(`UPDATE documents SET status = 'sent' WHERE id = $1`, [document_id]);
 
-  // Crear oportunidad en Monday al enviar a firma
-  crearOportunidadEnMonday({ document, userId }).catch(() => {});
+  // Crear oportunidad en Monday al enviar a firma.
+  // Mapeamos el correo del primer firmante (contacto principal) a la columna Email.
+  const signerEmail = signers[0]?.email?.trim() || null;
+  crearOportunidadEnMonday({ document, userId, signerEmail }).catch(() => {});
 
   // Audit: documento enviado a firma
   const pdfHash = hashPdfFile(document.pdf_url);
