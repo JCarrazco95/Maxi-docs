@@ -186,15 +186,34 @@ export function extractVariables(html) {
  * @param {string} html — HTML completo del documento (con variables ya reemplazadas)
  * @returns {Buffer} — Buffer del PDF generado
  */
+// Flags de Chromium para correr Puppeteer en contenedores Docker/Railway.
+// Los primeros 3 son los estándar; el resto evitan errores típicos en
+// entornos sin GPU, sin dbus, con memoria limitada o sin display server.
+const PUPPETEER_CONTAINER_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--disable-software-rasterizer',
+  '--disable-extensions',
+  '--disable-background-networking',
+  '--disable-default-apps',
+  '--disable-sync',
+  '--disable-translate',
+  '--hide-scrollbars',
+  '--metrics-recording-only',
+  '--mute-audio',
+  '--no-first-run',
+  '--safebrowsing-disable-auto-update',
+  '--no-zygote',
+  '--disable-features=VizDisplayCompositor,AudioServiceOutOfProcess',
+];
+
 export async function generatePdf(html) {
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-    ],
+    args: PUPPETEER_CONTAINER_ARGS,
   });
 
   try {
@@ -238,7 +257,7 @@ export async function generateThumbnail(html, templateId) {
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    args: PUPPETEER_CONTAINER_ARGS,
   });
   try {
     const page = await browser.newPage();
