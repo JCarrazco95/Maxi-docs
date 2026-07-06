@@ -23,6 +23,7 @@ const COL_ETAPA         = 'deal_stage';           // Etapa → "Cotización envi
 const COL_RESPONSABLE   = 'deal_owner';           // Ejecutivo (people)
 const COL_PDF           = 'archivo_mkmghcc4';     // Cotización (file)
 const COL_FOLIO         = 'text_mktmgv5z';        // Folio Pandadoc
+const COL_EMAIL         = 'Email';                // Dirección de e-mail principal del contacto
 
 // Extrae el total de todas las tablas de precios en el HTML
 function extractPricingTotal(html) {
@@ -79,15 +80,17 @@ function extractPricingTotal(html) {
   return Math.round(total);
 }
 
-async function createMondayDocItem({ docNumber, docName, clientName, totalAmount, html, mondayUserId }) {
+async function createMondayDocItem({ docNumber, docName, clientName, clientEmail, totalAmount, html, mondayUserId }) {
   const token = process.env.MONDAY_API_TOKEN;
   console.log(`[Monday] createMondayDocItem iniciando — token: ${token ? '✅ presente' : '❌ AUSENTE'} | userId: ${mondayUserId}`);
   if (!token) return null;
   try {
+    // Nota: 'client' debe declararse ANTES de itemName porque itemName lo usa
+    // (bug previo causaba "Cannot access 'client' before initialization").
+    const client    = clientName ?? '';
     const itemName  = client ? `${client} / Propuesta Comercial` : `${docNumber} | ${docName}`;
     const today     = new Date().toISOString().split('T')[0];
     const computed  = totalAmount ?? extractPricingTotal(html);
-    const client    = clientName ?? '';
 
     const colValues = {
       [COL_RAZON_SOCIAL]:  client,
@@ -103,7 +106,13 @@ async function createMondayDocItem({ docNumber, docName, clientName, totalAmount
       colValues[COL_RESPONSABLE] = { personsAndTeams: [{ id: Number(mondayUserId), kind: 'person' }] };
     }
 
-    console.log(`[Monday] Enviando mutation — item: ${itemName} | cliente: ${client} | total: ${computed}`);
+    // Dirección de e-mail principal del contacto — viene del filled_data
+    // (correo del cliente que aparece en el item de Monday del que se generó).
+    if (clientEmail) {
+      colValues[COL_EMAIL] = { email: clientEmail, text: clientEmail };
+    }
+
+    console.log(`[Monday] Enviando mutation — item: ${itemName} | cliente: ${client} | email: ${clientEmail || '—'} | total: ${computed}`);
 
     const mutation = `
       mutation {
@@ -417,12 +426,14 @@ router.post('/generate', requireEditor, async (req, res) => {
   const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
 
   // 6. Crear item en Monday con columnas rellenas — no bloquea si falla
-  // Para el item de Monday: nombre del comprador / empresa
-  const clientName = filled_data?.razon_social || filled_data?.name || filled_data?.nombre || '';
+  // Para el item de Monday: nombre del comprador / empresa + correo de contacto
+  const clientName  = filled_data?.razon_social || filled_data?.name || filled_data?.nombre || '';
+  const clientEmail = filled_data?.correo_electronico || filled_data?.email || '';
   const mondayDocItemId = await createMondayDocItem({
     docNumber,
     docName:      name,
     clientName,
+    clientEmail,
     html:         filledHtml,
     mondayUserId: userId,
   });
