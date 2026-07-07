@@ -20,6 +20,7 @@ const COL_EJECUTIVO  = 'deal_owner';
 const COL_FOLIO      = 'text_mktmgv5z';
 const COL_PDF_FILE   = 'archivo_mkmghcc4';
 const COL_EMAIL      = 'Email';   // Dirección de e-mail principal del contacto
+const COL_LEAD_RELATION = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent
 
 async function mondayGql(query, token) {
   const res = await fetch('https://api.monday.com/v2', {
@@ -49,10 +50,11 @@ async function crearOportunidadEnMonday({ document, userId, signerEmail }) {
   try {
     const filled  = typeof document.filled_data === 'string'
       ? JSON.parse(document.filled_data) : (document.filled_data ?? {});
-    const cliente = filled.name || filled.razon_social || filled.nombre || document.name || '';
+    const cliente = filled.name || filled.nombre || filled.razon_social || document.name || '';
     const empresa = filled.razon_social || filled.nombre || '';
     const today   = new Date().toISOString().split('T')[0];
-    const itemName = `${cliente} / Propuesta Comercial`;
+    // Solo el nombre del lead, sin sufijo
+    const itemName = cliente || document.doc_number || 'Nueva cotización';
 
     const colValues = {
       [COL_RAZON]:      empresa,
@@ -67,6 +69,11 @@ async function crearOportunidadEnMonday({ document, userId, signerEmail }) {
     // Dirección de e-mail principal del contacto — al que se le envió la cotización
     if (signerEmail) {
       colValues[COL_EMAIL] = { email: signerEmail, text: signerEmail };
+    }
+    // Relación con el item original de "Leads Maxirent" — el pulse ID del lead
+    // se guardó en documents.monday_item_id al momento de generar.
+    if (document.monday_item_id) {
+      colValues[COL_LEAD_RELATION] = { item_ids: [Number(document.monday_item_id)] };
     }
 
     const mutation = `

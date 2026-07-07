@@ -24,6 +24,7 @@ const COL_RESPONSABLE   = 'deal_owner';           // Ejecutivo (people)
 const COL_PDF           = 'archivo_mkmghcc4';     // Cotización (file)
 const COL_FOLIO         = 'text_mktmgv5z';        // Folio Pandadoc
 const COL_EMAIL         = 'Email';                // Dirección de e-mail principal del contacto
+const COL_LEAD_RELATION = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent (pulse ID del lead)
 
 // Extrae el total de todas las tablas de precios en el HTML
 function extractPricingTotal(html) {
@@ -80,17 +81,89 @@ function extractPricingTotal(html) {
   return Math.round(total);
 }
 
-async function createMondayDocItem({ docNumber, docName, clientName, clientEmail, totalAmount, html, mondayUserId }) {
+/**
+ * Extrae valores útiles de las tablas de precios del HTML del documento.
+ * Devuelve un objeto con datos que se pueden mapear a columnas de Monday.
+ * Ejemplo de uso: quoteValues.subtotalTarifas → columna "Valor renta mensual"
+ */
+function extractQuoteValues(html) {
+  if (!html) return null;
+  const values = {
+    subtotalTarifas:    0,   // Suma de renta mensual + entrega + recolección (sin IVA)
+    subtotalAdecuaciones: 0, // Suma de accesorios (sin IVA)
+    totalSinIVA:        0,   // subtotalTarifas + subtotalAdecuaciones
+    totalConIVA:        0,   // (totalSinIVA) * 1.16
+    ivaMonto:           0,   // totalSinIVA * 0.16
+    unidades:           [],  // ['Hino 3.5 caja Seca', ...] — nombres de las unidades
+    unidadesCount:      0,   // Cantidad total de unidades (suma de quantities)
+    primeraUnidad:      '',  // Nombre de la primera unidad (por si solo se mapea una)
+  };
+
+  const re = /<pricing-table([^>]*?)(?:\s*\/?>|>)/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const attrs = m[1];
+    const typeMatch = attrs.match(/data-table-type=["']([^"']+)["']/i);
+    const b64Match  = attrs.match(/data-items-b64=["']([^"']+)["']/i);
+    if (!b64Match || !typeMatch) continue;
+    const tableType = typeMatch[1];
+    try {
+      let rawJson;
+      try { rawJson = Buffer.from(b64Match[1], 'base64').toString('utf8'); }
+      catch { rawJson = decodeURIComponent(escape(atob(b64Match[1]))); }
+      const items = JSON.parse(rawJson);
+
+      for (const i of items) {
+        const qty = Number(i.quantity) || 1;
+        if (tableType === 'tarifas') {
+          const mensual   = (Number(i.dailyRate) || 0) * 30 * qty;
+          const delivery  = Number(i.delivery)  || 0;
+          const retrieval = Number(i.retrieval) || 0;
+          values.subtotalTarifas += mensual + delivery + retrieval;
+          if (i.name) {
+            values.unidades.push(i.name);
+            if (!values.primeraUnidad) values.primeraUnidad = i.name;
+          }
+          values.unidadesCount += qty;
+        } else if (tableType === 'accesorios') {
+          values.subtotalAdecuaciones += (Number(i.price) || 0) * qty;
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  values.totalSinIVA = Math.round(values.subtotalTarifas + values.subtotalAdecuaciones);
+  values.ivaMonto    = Math.round(values.totalSinIVA * 0.16);
+  values.totalConIVA = Math.round(values.totalSinIVA * 1.16);
+  return values;
+}
+
+async function createMondayDocItem({ docNumber, docName, clientName, clientEmail, mondayLeadId, totalAmount, html, mondayUserId }) {
   const token = process.env.MONDAY_API_TOKEN;
   console.log(`[Monday] createMondayDocItem iniciando — token: ${token ? '✅ presente' : '❌ AUSENTE'} | userId: ${mondayUserId}`);
   if (!token) return null;
   try {
-    // Nota: 'client' debe declararse ANTES de itemName porque itemName lo usa
-    // (bug previo causaba "Cannot access 'client' before initialization").
+    // Nota: 'client' debe declararse ANTES de itemName porque itemName lo usa.
     const client    = clientName ?? '';
-    const itemName  = client ? `${client} / Propuesta Comercial` : `${docNumber} | ${docName}`;
+    // El nombre del item = solo el nombre del lead (sin ' / Propuesta Comercial')
+    const itemName  = client || docName || docNumber || 'Nueva cotización';
     const today     = new Date().toISOString().split('T')[0];
     const computed  = totalAmount ?? extractPricingTotal(html);
+
+    // Extraemos valores estructurados de la cotización para poder mapearlos.
+    // Log detallado — nos sirve para saber qué columnas de Monday mapear.
+    const quoteValues = extractQuoteValues(html);
+    if (quoteValues) {
+      console.log(`[Monday:quote] Valores extraídos de la cotización:`);
+      console.log(`  - subtotalTarifas:     $${quoteValues.subtotalTarifas.toFixed(2)}`);
+      console.log(`  - subtotalAdecuaciones:$${quoteValues.subtotalAdecuaciones.toFixed(2)}`);
+      console.log(`  - totalSinIVA:         $${quoteValues.totalSinIVA}`);
+      console.log(`  - ivaMonto:            $${quoteValues.ivaMonto}`);
+      console.log(`  - totalConIVA:         $${quoteValues.totalConIVA}`);
+      console.log(`  - primeraUnidad:       "${quoteValues.primeraUnidad}"`);
+      console.log(`  - unidadesCount:       ${quoteValues.unidadesCount}`);
+      console.log(`  - unidades:            [${quoteValues.unidades.join(', ')}]`);
+    }
 
     const colValues = {
       [COL_RAZON_SOCIAL]:  client,
@@ -112,7 +185,13 @@ async function createMondayDocItem({ docNumber, docName, clientName, clientEmail
       colValues[COL_EMAIL] = { email: clientEmail, text: clientEmail };
     }
 
-    console.log(`[Monday] Enviando mutation — item: ${itemName} | cliente: ${client} | email: ${clientEmail || '—'} | total: ${computed}`);
+    // Relación con el item original de "Leads Maxirent" — así el item de
+    // Oportunidades queda enlazado a su lead de origen.
+    if (mondayLeadId) {
+      colValues[COL_LEAD_RELATION] = { item_ids: [Number(mondayLeadId)] };
+    }
+
+    console.log(`[Monday] Enviando mutation — item: ${itemName} | cliente: ${client} | email: ${clientEmail || '—'} | leadId: ${mondayLeadId || '—'} | total: ${computed}`);
 
     const mutation = `
       mutation {
@@ -426,14 +505,17 @@ router.post('/generate', requireEditor, async (req, res) => {
   const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
 
   // 6. Crear item en Monday con columnas rellenas — no bloquea si falla
-  // Para el item de Monday: nombre del comprador / empresa + correo de contacto
-  const clientName  = filled_data?.razon_social || filled_data?.name || filled_data?.nombre || '';
+  // Para el item de Monday: nombre del lead + correo de contacto + relación al lead.
+  // Priorizamos 'name' y 'nombre' (nombre del lead) sobre 'razon_social' que
+  // puede venir como "NA" cuando el lead es una persona física sin empresa.
+  const clientName  = filled_data?.name || filled_data?.nombre || filled_data?.razon_social || '';
   const clientEmail = filled_data?.correo_electronico || filled_data?.email || '';
   const mondayDocItemId = await createMondayDocItem({
     docNumber,
     docName:      name,
     clientName,
     clientEmail,
+    mondayLeadId: monday_item_id,   // Pulse ID del lead original → para la board_relation
     html:         filledHtml,
     mondayUserId: userId,
   });
