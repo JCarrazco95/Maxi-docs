@@ -186,13 +186,15 @@ export function extractVariables(html) {
  * @param {string} html — HTML completo del documento (con variables ya reemplazadas)
  * @returns {Buffer} — Buffer del PDF generado
  */
-// Flags de Chromium para correr Puppeteer en contenedores Docker/Railway.
-// Los primeros 3 son los estándar; el resto evitan errores típicos en
-// entornos sin GPU, sin dbus, con memoria limitada o sin display server.
+// Flags de Chromium para correr Puppeteer en contenedores Railway.
+// --single-process es el fix clave contra "Code: null" (OOM killer):
+// consolida todos los procesos hijo de Chromium en uno, reduce ~150MB RAM.
 const PUPPETEER_CONTAINER_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
+  '--single-process',          // ← CLAVE: reduce memoria drasticamente
+  '--no-zygote',               // combo con --single-process
   '--disable-gpu',
   '--disable-software-rasterizer',
   '--disable-extensions',
@@ -205,15 +207,20 @@ const PUPPETEER_CONTAINER_ARGS = [
   '--mute-audio',
   '--no-first-run',
   '--safebrowsing-disable-auto-update',
-  '--no-zygote',
-  '--disable-features=VizDisplayCompositor,AudioServiceOutOfProcess',
+  '--disable-features=VizDisplayCompositor,AudioServiceOutOfProcess,IsolateOrigins,site-per-process',
+  '--user-data-dir=/tmp/chrome-user-data',
 ];
 
 export async function generatePdf(html) {
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: 'new',                     // nuevo modo headless — más estable en containers
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: PUPPETEER_CONTAINER_ARGS,
+    dumpio: true,                        // vuelca stderr real de Chromium a los logs
+    handleSIGINT:  false,
+    handleSIGTERM: false,
+    handleSIGHUP:  false,
+    protocolTimeout: 120000,
   });
 
   try {
@@ -255,9 +262,13 @@ export async function generatePdf(html) {
  */
 export async function generateThumbnail(html, templateId) {
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: 'new',
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: PUPPETEER_CONTAINER_ARGS,
+    dumpio: true,
+    handleSIGINT:  false,
+    handleSIGTERM: false,
+    handleSIGHUP:  false,
   });
   try {
     const page = await browser.newPage();
