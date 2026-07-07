@@ -1,8 +1,10 @@
 FROM node:20-slim
 
-# Chrome y sus dependencias del sistema
+# Solo las libs del sistema — dejamos que Puppeteer instale su propio Chromium
+# porque el 'chromium' del apt de Debian slim es ~v128, incompatible con
+# Puppeteer 24 que necesita Chrome 131+ (mismatch de protocolo CDP causa
+# "Failed to launch: Code: null" al conectarse).
 RUN apt-get update && apt-get install -y \
-  chromium \
   fonts-liberation \
   fonts-noto-cjk \
   libasound2 \
@@ -20,22 +22,27 @@ RUN apt-get update && apt-get install -y \
   libxfixes3 \
   libxkbcommon0 \
   libxrandr2 \
+  wget \
+  ca-certificates \
   xdg-utils \
   --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# Puppeteer usará el chromium del sistema en lugar de descargar el suyo
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# NO usamos PUPPETEER_SKIP_CHROMIUM_DOWNLOAD → npm ci descarga el Chromium
+# que corresponde a la versión de Puppeteer instalada. Guardamos en /app/.cache
+# para que persista con el layer de node_modules.
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 WORKDIR /app
 
 COPY package*.json ./
+# npm ci ejecuta el postinstall de Puppeteer que descarga Chromium 131 (o el
+# que corresponda a puppeteer 24.9). Se guarda en PUPPETEER_CACHE_DIR.
 RUN npm ci --omit=dev
 
 COPY . .
 
 # Bust cache cuando el schema cambia — incrementar este número para forzar rebuild
-ARG CACHE_BUST=2
+ARG CACHE_BUST=3
 RUN mkdir -p uploads/documents uploads/thumbnails
 
 EXPOSE 3001
