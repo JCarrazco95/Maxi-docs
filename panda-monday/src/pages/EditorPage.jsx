@@ -417,8 +417,12 @@ export default function EditorPage() {
 
     setGenerating(true); setSignError(null)
     try {
-      const base      = session?.templateHtml ?? currentHtml
-      const finalHtml = mergePtItems(base, currentHtml)
+      // En modo "Solo tablas" mantenemos el template original y solo reemplazamos
+      // las pricing-tables editadas. En modo "Edición libre" el usuario cambió
+      // texto libremente → usamos currentHtml tal cual, sin merge.
+      const finalHtml = generatorMode
+        ? mergePtItems(session?.templateHtml ?? currentHtml, currentHtml)
+        : currentHtml
 
       // Modo edición: regenerar documento existente
       const res = session?.documentId
@@ -510,8 +514,12 @@ export default function EditorPage() {
     if (!session) return
     setGenerating(true); setError(null)
     try {
-      const base      = session.templateHtml ?? currentHtml
-      const finalHtml = mergePtItems(base, currentHtml)
+      // En modo "Solo tablas" mantenemos el template original y solo reemplazamos
+      // las pricing-tables editadas. En modo "Edición libre" el usuario cambió
+      // texto libremente → usamos currentHtml tal cual, sin merge.
+      const finalHtml = generatorMode
+        ? mergePtItems(session.templateHtml ?? currentHtml, currentHtml)
+        : currentHtml
 
       // Modo edición: regenerar documento existente (mantiene folio)
       const res = session.documentId
