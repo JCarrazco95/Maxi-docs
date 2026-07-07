@@ -210,10 +210,23 @@ const PUPPETEER_CONTAINER_ARGS = [
   '--disable-features=VizDisplayCompositor,AudioServiceOutOfProcess',
 ];
 
+// Resuelve el executablePath de Chromium: si PUPPETEER_EXECUTABLE_PATH está
+// seteado Y el binario EXISTE, lo usamos. Si está seteado pero apunta a un
+// binario que ya no existe (típicamente porque la env var quedó huérfana en
+// Railway después de que el Dockerfile dejó de instalar chromium del apt),
+// caemos a undefined → Puppeteer usa su Chromium bundled (PUPPETEER_CACHE_DIR).
+function resolveExecutablePath() {
+  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (!envPath) return undefined;
+  if (existsSync(envPath)) return envPath;
+  console.warn(`[PDF] PUPPETEER_EXECUTABLE_PATH="${envPath}" no existe; usando Chromium bundled`);
+  return undefined;
+}
+
 export async function generatePdf(html) {
   const browser = await puppeteer.launch({
     headless: true,                      // modo headless clásico — el 'new' puede tener bugs con Chromium de Debian slim
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    executablePath: resolveExecutablePath(),
     args: PUPPETEER_CONTAINER_ARGS,
     dumpio: true,                        // seguimos volcando stderr a logs por si algo falla
     handleSIGINT:  false,
@@ -262,7 +275,7 @@ export async function generatePdf(html) {
 export async function generateThumbnail(html, templateId) {
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    executablePath: resolveExecutablePath(),
     args: PUPPETEER_CONTAINER_ARGS,
     dumpio: true,
     handleSIGINT:  false,
