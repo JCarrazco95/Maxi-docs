@@ -187,14 +187,14 @@ export function extractVariables(html) {
  * @returns {Buffer} — Buffer del PDF generado
  */
 // Flags de Chromium para correr Puppeteer en contenedores Railway.
-// --single-process es el fix clave contra "Code: null" (OOM killer):
-// consolida todos los procesos hijo de Chromium en uno, reduce ~150MB RAM.
+// El plan del usuario tiene 8GB de RAM disponibles, así que memoria NO es el
+// problema. NO usamos --single-process ni --no-zygote: causan que Chromium
+// tire "Cannot use V8 Proxy resolver in single process mode" y muera con
+// signal en versiones recientes de Chromium — están deprecated.
 const PUPPETEER_CONTAINER_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
-  '--single-process',          // ← CLAVE: reduce memoria drasticamente
-  '--no-zygote',               // combo con --single-process
   '--disable-gpu',
   '--disable-software-rasterizer',
   '--disable-extensions',
@@ -207,16 +207,15 @@ const PUPPETEER_CONTAINER_ARGS = [
   '--mute-audio',
   '--no-first-run',
   '--safebrowsing-disable-auto-update',
-  '--disable-features=VizDisplayCompositor,AudioServiceOutOfProcess,IsolateOrigins,site-per-process',
-  '--user-data-dir=/tmp/chrome-user-data',
+  '--disable-features=VizDisplayCompositor,AudioServiceOutOfProcess',
 ];
 
 export async function generatePdf(html) {
   const browser = await puppeteer.launch({
-    headless: 'new',                     // nuevo modo headless — más estable en containers
+    headless: true,                      // modo headless clásico — el 'new' puede tener bugs con Chromium de Debian slim
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: PUPPETEER_CONTAINER_ARGS,
-    dumpio: true,                        // vuelca stderr real de Chromium a los logs
+    dumpio: true,                        // seguimos volcando stderr a logs por si algo falla
     handleSIGINT:  false,
     handleSIGTERM: false,
     handleSIGHUP:  false,
@@ -262,7 +261,7 @@ export async function generatePdf(html) {
  */
 export async function generateThumbnail(html, templateId) {
   const browser = await puppeteer.launch({
-    headless: 'new',
+    headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: PUPPETEER_CONTAINER_ARGS,
     dumpio: true,
