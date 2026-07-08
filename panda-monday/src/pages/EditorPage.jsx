@@ -43,20 +43,69 @@ function mergePtItems(templateHtml, editorHtml) {
   })
 }
 
-// TipTap remueve las etiquetas <style> al parsear el HTML del template
-// (solo entiende nodos del editor, no CSS). En modo Edición libre, cuando
-// enviamos currentHtml al backend, se pierden las reglas del template
-// (.mr, .mr-page, .mr-full-bleed, .mr-ad-page) y el PDF sale descuadrado.
-// Este helper extrae el bloque <style>...</style> del templateHtml y lo
-// vuelve a prepender al editorHtml si no está presente.
-function ensureTemplateStyle(templateHtml, editorHtml) {
+// TipTap remueve la etiqueta <style> Y los divs contenedores (.mr, .mr-page,
+// .mr-page-content, .mr-ad-page) al parsear el HTML del template — solo
+// conserva elementos de su schema (párrafos, headings, imágenes, tablas,
+// pricing-tables). Sin esos wrappers ni el CSS, el PDF sale sin layout.
+//
+// Este helper rearma la estructura para el modo Edición libre:
+//   1. Extrae el bloque <style> del template original
+//   2. Extrae la página publicitaria (.mr-ad-page) del template
+//   3. Extrae imágenes header/footer del template (por clase)
+//   4. Toma el contenido plano que devolvió TipTap y le quita las
+//      imágenes header/footer/ad-page que hubieran sobrevivido (para
+//      no duplicar)
+//   5. Envuelve todo en .mr > .mr-page > (header + .mr-page-content + footer)
+//      + la .mr-ad-page como página siguiente
+//
+// Reemplaza la función anterior ensureTemplateStyle (que solo reinyectaba
+// el <style>) porque ese fix era insuficiente sin los wrappers.
+function rewrapForFreeEdit(templateHtml, editorHtml) {
   if (!editorHtml) return editorHtml
-  // Si el editorHtml ya trae un <style>, no lo tocamos.
-  if (/<style[^>]*>[\s\S]*?<\/style>/i.test(editorHtml)) return editorHtml
-  // Extraemos el bloque <style> del template
-  const styleMatch = templateHtml?.match(/<style[^>]*>[\s\S]*?<\/style>/i)
-  if (!styleMatch) return editorHtml
-  return styleMatch[0] + '\n' + editorHtml
+  const tpl = templateHtml || ''
+
+  // 1. Style block del template
+  const styleBlock = tpl.match(/<style[^>]*>[\s\S]*?<\/style>/i)?.[0] || ''
+
+  // 2. Página publicitaria del template
+  const adPage = tpl.match(/<div[^>]*class="[^"]*mr-ad-page[^"]*"[^>]*>[\s\S]*?<\/div>/i)?.[0] || ''
+
+  // 3. Header/footer del template (por si TipTap los eliminó)
+  const tplHeader = tpl.match(/<img[^>]*class="[^"]*mr-page-header[^"]*"[^>]*\/?>/i)?.[0] || ''
+  const tplFooter = tpl.match(/<img[^>]*class="[^"]*mr-page-footer[^"]*"[^>]*\/?>/i)?.[0] || ''
+
+  // 4. Contenido plano — limpiar de:
+  //    - Bloques <style> repetidos
+  //    - Imágenes header/footer/ad-page (las reponemos desde el template)
+  //    - Wrappers .mr, .mr-page, .mr-page-content si TipTap los conservó
+  let content = editorHtml
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<img[^>]*class="[^"]*mr-page-header[^"]*"[^>]*\/?>/gi, '')
+    .replace(/<img[^>]*class="[^"]*mr-page-footer[^"]*"[^>]*\/?>/gi, '')
+    .replace(/<div[^>]*class="[^"]*mr-ad-page[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+
+  // Los divs de layout (mr, mr-page, mr-page-content) TipTap típicamente
+  // los aplana. Si por algún motivo sobrevivieron, los quitamos también
+  // para evitar anidamiento doble.
+  content = content
+    .replace(/<div[^>]*class="[^"]*mr-page-content[^"]*"[^>]*>/gi, '')
+    .replace(/<div[^>]*class="[^"]*mr-page(?!-)[^"]*"[^>]*>/gi, '')
+    .replace(/<div[^>]*class="mr"[^>]*>/gi, '')
+
+  // Nota: no eliminamos los </div> huérfanos porque no sabemos cuáles
+  // pertenecen a los wrappers vs a divs legítimos del contenido.
+  // El browser tolera </div> extras.
+
+  // 5. Rearmar estructura
+  return `${styleBlock}
+<div class="mr">
+  <div class="mr-page">
+    ${tplHeader}
+    <div class="mr-page-content">${content}</div>
+    ${tplFooter}
+  </div>
+  ${adPage}
+</div>`
 }
 
 // ── Abrir editor en pestaña nueva ────────────────────────────
@@ -435,11 +484,11 @@ export default function EditorPage() {
     try {
       // En modo "Solo tablas" mantenemos el template original y solo reemplazamos
       // las pricing-tables editadas. En modo "Edición libre" el usuario cambió
-      // texto libremente → usamos currentHtml tal cual, pero reinyectamos el
-      // <style> del template porque TipTap lo quita al parsear.
+      // texto libremente → tomamos currentHtml y le reponemos el <style> y los
+      // wrappers .mr/.mr-page/.mr-page-content que TipTap descarta al parsear.
       const finalHtml = generatorMode
         ? mergePtItems(session?.templateHtml ?? currentHtml, currentHtml)
-        : ensureTemplateStyle(session?.templateHtml || editorHtml, currentHtml)
+        : rewrapForFreeEdit(session?.templateHtml || editorHtml, currentHtml)
 
       // Modo edición: regenerar documento existente
       const res = session?.documentId
@@ -533,10 +582,11 @@ export default function EditorPage() {
     try {
       // En modo "Solo tablas" mantenemos el template original y solo reemplazamos
       // las pricing-tables editadas. En modo "Edición libre" el usuario cambió
-      // texto libremente → usamos currentHtml tal cual, sin merge.
+      // texto libremente → tomamos currentHtml y le reponemos el <style> y los
+      // wrappers .mr/.mr-page/.mr-page-content que TipTap descarta al parsear.
       const finalHtml = generatorMode
         ? mergePtItems(session.templateHtml ?? currentHtml, currentHtml)
-        : ensureTemplateStyle(session.templateHtml || editorHtml, currentHtml)
+        : rewrapForFreeEdit(session.templateHtml || editorHtml, currentHtml)
 
       // Modo edición: regenerar documento existente (mantiene folio)
       const res = session.documentId
