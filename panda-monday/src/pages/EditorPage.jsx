@@ -43,6 +43,22 @@ function mergePtItems(templateHtml, editorHtml) {
   })
 }
 
+// TipTap remueve las etiquetas <style> al parsear el HTML del template
+// (solo entiende nodos del editor, no CSS). En modo Edición libre, cuando
+// enviamos currentHtml al backend, se pierden las reglas del template
+// (.mr, .mr-page, .mr-full-bleed, .mr-ad-page) y el PDF sale descuadrado.
+// Este helper extrae el bloque <style>...</style> del templateHtml y lo
+// vuelve a prepender al editorHtml si no está presente.
+function ensureTemplateStyle(templateHtml, editorHtml) {
+  if (!editorHtml) return editorHtml
+  // Si el editorHtml ya trae un <style>, no lo tocamos.
+  if (/<style[^>]*>[\s\S]*?<\/style>/i.test(editorHtml)) return editorHtml
+  // Extraemos el bloque <style> del template
+  const styleMatch = templateHtml?.match(/<style[^>]*>[\s\S]*?<\/style>/i)
+  if (!styleMatch) return editorHtml
+  return styleMatch[0] + '\n' + editorHtml
+}
+
 // ── Abrir editor en pestaña nueva ────────────────────────────
 export function openEditorTab(data) {
   const params = new URLSearchParams()
@@ -419,10 +435,11 @@ export default function EditorPage() {
     try {
       // En modo "Solo tablas" mantenemos el template original y solo reemplazamos
       // las pricing-tables editadas. En modo "Edición libre" el usuario cambió
-      // texto libremente → usamos currentHtml tal cual, sin merge.
+      // texto libremente → usamos currentHtml tal cual, pero reinyectamos el
+      // <style> del template porque TipTap lo quita al parsear.
       const finalHtml = generatorMode
         ? mergePtItems(session?.templateHtml ?? currentHtml, currentHtml)
-        : currentHtml
+        : ensureTemplateStyle(session?.templateHtml || editorHtml, currentHtml)
 
       // Modo edición: regenerar documento existente
       const res = session?.documentId
@@ -519,7 +536,7 @@ export default function EditorPage() {
       // texto libremente → usamos currentHtml tal cual, sin merge.
       const finalHtml = generatorMode
         ? mergePtItems(session.templateHtml ?? currentHtml, currentHtml)
-        : currentHtml
+        : ensureTemplateStyle(session.templateHtml || editorHtml, currentHtml)
 
       // Modo edición: regenerar documento existente (mantiene folio)
       const res = session.documentId
