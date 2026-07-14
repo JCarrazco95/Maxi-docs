@@ -48,15 +48,33 @@ function mergePtItems(templateHtml, editorHtml) {
 // enviamos currentHtml al backend, se pierden las reglas del template
 // (.mr, .mr-page, .mr-full-bleed, .mr-ad-page) y el PDF sale descuadrado.
 // Este helper extrae el bloque <style>...</style> del templateHtml y lo
-// vuelve a prepender al editorHtml si no está presente.
+// vuelve a prepender al editorHtml si no está presente. También deduplica
+// las imágenes de header/footer: si la plantilla tiene varias páginas,
+// TipTap aplana todo el contenido y cada header/footer original queda
+// repetido en el flujo (sin salto de página que los separe); nos quedamos
+// con una sola aparición de cada uno, al inicio y al final.
 function ensureTemplateStyle(templateHtml, editorHtml) {
   if (!editorHtml) return editorHtml
-  // Si el editorHtml ya trae un <style>, no lo tocamos.
-  if (/<style[^>]*>[\s\S]*?<\/style>/i.test(editorHtml)) return editorHtml
-  // Extraemos el bloque <style> del template
-  const styleMatch = templateHtml?.match(/<style[^>]*>[\s\S]*?<\/style>/i)
-  if (!styleMatch) return editorHtml
-  return styleMatch[0] + '\n' + editorHtml
+  const tpl = templateHtml || ''
+
+  const styleAlreadyPresent = /<style[^>]*>[\s\S]*?<\/style>/i.test(editorHtml)
+  const styleBlock = styleAlreadyPresent ? '' : (tpl.match(/<style[^>]*>[\s\S]*?<\/style>/i)?.[0] || '')
+  let content = styleAlreadyPresent ? editorHtml : editorHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+
+  const header = tpl.match(/<img[^>]*class="[^"]*mr-page-header[^"]*"[^>]*\/?>/i)?.[0] || ''
+  const footer = tpl.match(/<img[^>]*class="[^"]*mr-page-footer[^"]*"[^>]*\/?>/i)?.[0] || ''
+
+  const headerCount = (content.match(/<img[^>]*class="[^"]*mr-page-header[^"]*"[^>]*\/?>/gi) || []).length
+  const footerCount = (content.match(/<img[^>]*class="[^"]*mr-page-footer[^"]*"[^>]*\/?>/gi) || []).length
+
+  // Sin duplicados que resolver → solo reinyectamos el <style> si hacía falta.
+  if (headerCount <= 1 && footerCount <= 1) return styleBlock + '\n' + content
+
+  content = content
+    .replace(/<img[^>]*class="[^"]*mr-page-header[^"]*"[^>]*\/?>/gi, '')
+    .replace(/<img[^>]*class="[^"]*mr-page-footer[^"]*"[^>]*\/?>/gi, '')
+
+  return `${styleBlock}\n${header}\n${content}\n${footer}`
 }
 
 // ── Abrir editor en pestaña nueva ────────────────────────────
@@ -260,6 +278,17 @@ export default function EditorPage() {
           setTplCss(css)
           setEditorHtml(doc.content_html ?? '')
           setCurrentHtml(doc.content_html ?? '')
+          // session.templateHtml queda sin llenar arriba porque un documento
+          // ya generado no trae la plantilla original — sin esto, Edición
+          // libre no tiene de dónde reinyectar <style> ni header/footer al
+          // guardar (ver ensureTemplateStyle). La plantilla original (no el
+          // documento, que puede haber perdido el estilo en un guardado
+          // previo) es la fuente confiable de ese CSS/estructura.
+          if (doc.template_id) {
+            api.get(`/api/templates/${doc.template_id}`)
+              .then(r => setSession(prev => prev && ({ ...prev, templateHtml: r.data.content_html })))
+              .catch(() => {})
+          }
           const fv = typeof doc.filled_data === 'string' ? JSON.parse(doc.filled_data || '{}') : (doc.filled_data ?? {})
           setVarValues(fv)
           api.get('/api/monday/me').then(r => {
