@@ -52,7 +52,10 @@ export const PricingTable = Node.create({
       },
       ivaRate: {
         default:   16,
-        parseHTML: el => Number(el.getAttribute('data-iva') ?? 16),
+        // El backend (pdfService.processPricingTableNodes) y las plantillas
+        // usan "data-iva-rate", no "data-iva" — deben coincidir para que el
+        // IVA sobreviva un guardado desde Edición libre.
+        parseHTML: el => Number(el.getAttribute('data-iva-rate') ?? 16),
       },
       tableType: {
         default:   'renta',
@@ -72,7 +75,7 @@ export const PricingTable = Node.create({
     return ['pricing-table', {
       'data-title':       node.attrs.title,
       'data-items-b64':   node.attrs.itemsB64,
-      'data-iva':         String(node.attrs.ivaRate),
+      'data-iva-rate':    String(node.attrs.ivaRate),
       'data-table-type':  node.attrs.tableType,
       'data-columns-b64': node.attrs.columnsB64,
     }]
