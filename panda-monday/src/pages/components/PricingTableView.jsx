@@ -510,7 +510,13 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
     // ADECUACIONES: subtotal sin IVA
     const totalAcc  = accItems.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||1), 0)
     const subtotal  = totalTarifas + totalAcc
-    const ivaPct    = Number(ivaRate) || 16
+    // OJO: "|| 16" trataba 0% como "falta valor" y forzaba 16% — el preview
+    // mostraba/calculaba 16% aunque el atributo real fuera 0, mientras el
+    // backend (que sí usa "?? 16") sí respetaba el 0 real → el PDF salía sin
+    // IVA aunque el editor mostrara 16%. ivaRate ya viene numérico desde el
+    // default del schema (PricingTableExtension), así que no hace falta
+    // fallback aquí.
+    const ivaPct    = Number(ivaRate)
     const ivaAmt    = subtotal * ivaPct / 100
     const total     = subtotal + ivaAmt
 
