@@ -181,7 +181,7 @@ router.post('/seed', async (req, res) => {
     <p class="mr-obs-label">Observaciones:</p>
     <div class="mr-obs">Se requiere Pago por anticipado 30 días, garantía de 30 días + Firma de contrato + Firma pagaré</div>
     <pricing-table data-title="ADECUACIONES" data-table-type="accesorios" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
-    <pricing-table data-title="VALOR DEL ACUERDO INICIAL" data-table-type="acuerdo" data-items-b64="W10=" data-iva-rate="0"></pricing-table>
+    <pricing-table data-title="VALOR DEL ACUERDO INICIAL" data-table-type="acuerdo" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
     <h3 class="mr-h3">Condiciones comerciales</h3>
     <ul class="mr-ul">
       <li>Tarifas de rentas, traslados y/o adecuaciones son más IVA</li>
