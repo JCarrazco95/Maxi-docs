@@ -44,37 +44,17 @@ function mergePtItems(templateHtml, editorHtml) {
 }
 
 // TipTap remueve las etiquetas <style> al parsear el HTML del template
-// (solo entiende nodos del editor, no CSS). En modo Edición libre, cuando
-// enviamos currentHtml al backend, se pierden las reglas del template
-// (.mr, .mr-page, .mr-full-bleed, .mr-ad-page) y el PDF sale descuadrado.
-// Este helper extrae el bloque <style>...</style> del templateHtml y lo
-// vuelve a prepender al editorHtml si no está presente. También deduplica
-// las imágenes de header/footer: si la plantilla tiene varias páginas,
-// TipTap aplana todo el contenido y cada header/footer original queda
-// repetido en el flujo (sin salto de página que los separe); nos quedamos
-// con una sola aparición de cada uno, al inicio y al final.
+// (solo entiende nodos del editor, no CSS — el resto de la estructura, como
+// los wrappers .mr-page con su page-break-before, la preserva el nodo
+// genericDiv de WysiwygEditor.jsx). Este helper extrae el bloque
+// <style>...</style> del templateHtml y lo vuelve a prepender al editorHtml
+// si no está presente.
 function ensureTemplateStyle(templateHtml, editorHtml) {
   if (!editorHtml) return editorHtml
-  const tpl = templateHtml || ''
-
-  const styleAlreadyPresent = /<style[^>]*>[\s\S]*?<\/style>/i.test(editorHtml)
-  const styleBlock = styleAlreadyPresent ? '' : (tpl.match(/<style[^>]*>[\s\S]*?<\/style>/i)?.[0] || '')
-  let content = styleAlreadyPresent ? editorHtml : editorHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-
-  const header = tpl.match(/<img[^>]*class="[^"]*mr-page-header[^"]*"[^>]*\/?>/i)?.[0] || ''
-  const footer = tpl.match(/<img[^>]*class="[^"]*mr-page-footer[^"]*"[^>]*\/?>/i)?.[0] || ''
-
-  const headerCount = (content.match(/<img[^>]*class="[^"]*mr-page-header[^"]*"[^>]*\/?>/gi) || []).length
-  const footerCount = (content.match(/<img[^>]*class="[^"]*mr-page-footer[^"]*"[^>]*\/?>/gi) || []).length
-
-  // Sin duplicados que resolver → solo reinyectamos el <style> si hacía falta.
-  if (headerCount <= 1 && footerCount <= 1) return styleBlock + '\n' + content
-
-  content = content
-    .replace(/<img[^>]*class="[^"]*mr-page-header[^"]*"[^>]*\/?>/gi, '')
-    .replace(/<img[^>]*class="[^"]*mr-page-footer[^"]*"[^>]*\/?>/gi, '')
-
-  return `${styleBlock}\n${header}\n${content}\n${footer}`
+  if (/<style[^>]*>[\s\S]*?<\/style>/i.test(editorHtml)) return editorHtml
+  const styleMatch = templateHtml?.match(/<style[^>]*>[\s\S]*?<\/style>/i)
+  if (!styleMatch) return editorHtml
+  return styleMatch[0] + '\n' + editorHtml
 }
 
 // ── Abrir editor en pestaña nueva ────────────────────────────

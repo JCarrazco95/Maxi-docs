@@ -8,6 +8,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Image as ImageBase } from '@tiptap/extension-image'
+import { Node as TiptapNode, mergeAttributes } from '@tiptap/core'
 
 // @tiptap/extension-image solo conoce src/alt/title por defecto — descarta
 // class y style al parsear. Las imágenes de header/footer/página publicitaria
@@ -30,6 +31,36 @@ const Image = ImageBase.extend({
       },
     }
   },
+})
+
+// TipTap no tiene un nodo para <div> genérico — cualquier <div class="...">
+// que no reconoce (wrappers de página, cajas con borde, layouts flex, etc.)
+// lo descarta al parsear, dejando solo su contenido interno "aplanado".
+// Esto es lo que rompía Edición libre en documentos multipágina: perdía los
+// wrappers .mr-page (con su page-break-before), .mr-obs, .mr-header-info,
+// .mr-firma-box... Este nodo pasa cualquier <div> a través del editor tal
+// cual, preservando class/style y su contenido anidado.
+const GenericDiv = TiptapNode.create({
+  name:      'genericDiv',
+  group:     'block',
+  content:   'block*',
+  defining:  true,
+  addAttributes() {
+    return {
+      class: {
+        default:    null,
+        parseHTML:  el => el.getAttribute('class'),
+        renderHTML: attrs => (attrs.class ? { class: attrs.class } : {}),
+      },
+      style: {
+        default:    null,
+        parseHTML:  el => el.getAttribute('style'),
+        renderHTML: attrs => (attrs.style ? { style: attrs.style } : {}),
+      },
+    }
+  },
+  parseHTML() { return [{ tag: 'div' }] },
+  renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes), 0] },
 })
 import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
@@ -329,6 +360,7 @@ const WysiwygEditor = forwardRef(function WysiwygEditor({ value, onChange, onAID
       TableHeader,
       TableCell,
       Image.configure({ inline: false, allowBase64: true }),
+      GenericDiv,
       PricingTable,
       SignatureField,
       VariableHighlight,
