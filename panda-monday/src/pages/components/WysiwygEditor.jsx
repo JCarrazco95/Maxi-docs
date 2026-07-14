@@ -7,7 +7,30 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import Placeholder from '@tiptap/extension-placeholder'
-import { Image } from '@tiptap/extension-image'
+import { Image as ImageBase } from '@tiptap/extension-image'
+
+// @tiptap/extension-image solo conoce src/alt/title por defecto — descarta
+// class y style al parsear. Las imágenes de header/footer/página publicitaria
+// del template dependen de su class (.mr-full-bleed, .mr-page-header, etc.)
+// para el tamaño y posición; sin esto, cualquier vuelta por el editor las
+// deja a su tamaño nativo de imagen.
+const Image = ImageBase.extend({
+  addAttributes() {
+    return {
+      ...this.parent(),
+      class: {
+        default:    null,
+        parseHTML:  el => el.getAttribute('class'),
+        renderHTML: attrs => (attrs.class ? { class: attrs.class } : {}),
+      },
+      style: {
+        default:    null,
+        parseHTML:  el => el.getAttribute('style'),
+        renderHTML: attrs => (attrs.style ? { style: attrs.style } : {}),
+      },
+    }
+  },
+})
 import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import { PricingTable } from './PricingTableExtension.js'
