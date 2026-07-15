@@ -65,14 +65,14 @@ function typeDefaults(tableType) {
 
 const COLS = {
   // Tipo de unidad más ancha (2fr), campos numéricos ajustados
-  tarifas:    { grid: '2fr 48px 70px 100px 110px 90px 90px 36px', headers: ['TIPO DE UNIDAD', 'CANT.', 'DEDUCIBLE', 'RENTA DIARIA', 'RENTA MENSUAL', 'ENTREGA', 'RECOLECCIÓN', ''], align: ['left', 'center', 'center', 'right', 'right', 'right', 'right', 'center'] },
+  tarifas:    { grid: '2fr 60px 84px 116px 126px 104px 104px 40px', headers: ['TIPO DE UNIDAD', 'CANT.', 'DEDUCIBLE', 'RENTA DIARIA', 'RENTA MENSUAL', 'ENTREGA', 'RECOLECCIÓN', ''], align: ['left', 'center', 'center', 'right', 'right', 'right', 'right', 'center'] },
   // ADECUACIONES: sin DESC.%, columnas renombradas
-  accesorios: { grid: '70px 1fr 120px 120px 36px', headers: ['CANTIDAD', 'DESCRIPCIÓN', 'PRECIO POR UNIDAD', 'SUBTOTAL', ''], align: ['center', 'left', 'right', 'right', 'center'] },
+  accesorios: { grid: '84px 1fr 136px 136px 40px', headers: ['CANTIDAD', 'DESCRIPCIÓN', 'PRECIO POR UNIDAD', 'SUBTOTAL', ''], align: ['center', 'left', 'right', 'right', 'center'] },
   // Valor del acuerdo: descripcion + subtotal manual + IVA calc + Total calc
-  acuerdo:    { grid: '1fr 120px 120px 120px 36px', headers: ['DESCRIPCIÓN', 'SUBTOTAL', 'IVA', 'TOTAL', ''], align: ['left', 'right', 'right', 'right', 'center'] },
-  renta:      { grid: '52px 1fr 100px 110px 66px 52px 60px 100px 36px', headers: ['CANTIDAD', 'TIPO DE UNIDAD', 'TARIFA DIARIA', 'TARIFA MENSUAL', 'DEDUCIBLE', 'DÍAS', 'DESC.%', 'SUBTOTAL', ''], align: ['center', 'left', 'right', 'right', 'center', 'center', 'center', 'right', 'center'] },
-  traslados:  { grid: '52px 1fr 110px 82px 100px 60px 100px 36px', headers: ['CANTIDAD', 'TIPO UNIDAD', 'TRASLADO', 'ENTREGA', 'RECOLECCIÓN', 'DESC.%', 'SUBTOTAL', ''], align: ['center', 'left', 'right', 'right', 'right', 'center', 'right', 'center'] },
-  generic:    { grid: '90px 1fr 100px 110px 60px 110px 36px', headers: ['CANT.', 'SERVICIO / UNIDAD', 'SKU', 'PRECIO/MES', 'DESC.%', 'SUBTOTAL', ''], align: ['center', 'left', 'left', 'right', 'center', 'right', 'center'] },
+  acuerdo:    { grid: '1fr 136px 136px 136px 40px', headers: ['DESCRIPCIÓN', 'SUBTOTAL', 'IVA', 'TOTAL', ''], align: ['left', 'right', 'right', 'right', 'center'] },
+  renta:      { grid: '64px 1fr 116px 126px 78px 64px 72px 116px 40px', headers: ['CANTIDAD', 'TIPO DE UNIDAD', 'TARIFA DIARIA', 'TARIFA MENSUAL', 'DEDUCIBLE', 'DÍAS', 'DESC.%', 'SUBTOTAL', ''], align: ['center', 'left', 'right', 'right', 'center', 'center', 'center', 'right', 'center'] },
+  traslados:  { grid: '64px 1fr 126px 96px 116px 72px 116px 40px', headers: ['CANTIDAD', 'TIPO UNIDAD', 'TRASLADO', 'ENTREGA', 'RECOLECCIÓN', 'DESC.%', 'SUBTOTAL', ''], align: ['center', 'left', 'right', 'right', 'right', 'center', 'right', 'center'] },
+  generic:    { grid: '104px 1fr 116px 126px 72px 126px 40px', headers: ['CANT.', 'SERVICIO / UNIDAD', 'SKU', 'PRECIO/MES', 'DESC.%', 'SUBTOTAL', ''], align: ['center', 'left', 'left', 'right', 'center', 'right', 'center'] },
 }
 
 /**

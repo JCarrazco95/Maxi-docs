@@ -735,7 +735,7 @@ export default function EditorPage() {
 
               {/* Indicador modo generador */}
               {generatorMode && (
-                <div style={{ width: '100%', maxWidth: 850, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: '100%', maxWidth: 1100, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{ flex: 1, background: 'rgba(0,200,117,0.15)', border: '1px solid rgba(0,200,117,0.35)', borderRadius: 8, padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'white' }}>
                     <span style={{ fontSize: 14 }}>🔒</span>
                     <span><strong>Modo generador:</strong> el texto está bloqueado. Solo las <strong>tablas de precios</strong> son editables. Las variables se rellenaron desde Monday.</span>
@@ -743,7 +743,7 @@ export default function EditorPage() {
                 </div>
               )}
 
-              <div style={{ width: '100%', maxWidth: 850, background: 'white', boxShadow: '0 4px 40px rgba(0,0,0,0.4)', borderRadius: 2, minHeight: 1123 }}>
+              <div style={{ width: '100%', maxWidth: 1100, background: 'white', boxShadow: '0 4px 40px rgba(0,0,0,0.4)', borderRadius: 2, minHeight: 1123 }}>
                 <div className={`ep-page${generatorMode ? ' ep-generator-mode' : ''}`}>
                   <WysiwygEditor ref={editorRef} value={editorHtml} onChange={handleChange} signers={signers} hideToolbar={generatorMode} />
                 </div>
