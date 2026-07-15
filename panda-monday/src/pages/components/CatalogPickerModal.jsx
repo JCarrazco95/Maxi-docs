@@ -212,8 +212,6 @@ export default function CatalogPickerModal({ onClose, onConfirm, initialItems = 
                         IVA
                         <select value={ivaRate} onChange={e => setIvaRate(Number(e.target.value))}
                           style={{ fontSize: 11, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 4 }}>
-                          <option value={0}>0%</option>
-                          <option value={8}>8%</option>
                           <option value={16}>16%</option>
                         </select>
                       </span>

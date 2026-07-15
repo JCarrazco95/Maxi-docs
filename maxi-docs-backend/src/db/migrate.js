@@ -44,7 +44,7 @@ const SEED_TEMPLATES = [
   </div>
 </div>
 <p class="mr-intro">Presentamos una solución integral para la renta y administración de flota vehicular, diseñada para garantizar <strong>disponibilidad operativa, control de costos y continuidad de servicio</strong>.</p>
-<pricing-table data-title="TARIFAS" data-table-type="tarifas" data-items-b64="W10=" data-iva-rate="0"></pricing-table>
+<pricing-table data-title="TARIFAS" data-table-type="tarifas" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
 <p class="mr-obs-label">Observaciones:</p>
 <div class="mr-obs">Se requiere Pago por anticipado 30 días, garantía de 30 días + Firma de contrato + Firma pagaré</div>
 <pricing-table data-title="ADECUACIONES" data-table-type="accesorios" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
