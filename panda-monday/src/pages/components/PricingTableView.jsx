@@ -533,8 +533,6 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
                 IVA
                 <select className="pt-iva-select" value={ivaPct}
                   onChange={e => updateAttributes({ ivaRate: Number(e.target.value) })}>
-                  <option value={0}>0%</option>
-                  <option value={8}>8%</option>
                   <option value={16}>16%</option>
                 </select>
               </label>
@@ -627,8 +625,6 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
                 IVA
                 <select className="pt-iva-select" value={ivaRate}
                   onChange={e => updateAttributes({ ivaRate: Number(e.target.value) })}>
-                  <option value={0}>0%</option>
-                  <option value={8}>8%</option>
                   <option value={16}>16%</option>
                 </select>
               </label>
