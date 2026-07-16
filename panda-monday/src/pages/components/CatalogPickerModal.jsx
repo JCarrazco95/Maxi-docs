@@ -19,7 +19,7 @@ export default function CatalogPickerModal({ onClose, onConfirm, initialItems = 
     // Inicializar con items ya seleccionados { productId -> quantity }
     Object.fromEntries(initialItems.map(i => [i.id, i.quantity]))
   )
-  const [ivaRate, setIvaRate]       = useState(16)
+  const ivaRate = 16 // IVA fijo — ya no es configurable
 
   useEffect(() => {
     api.get('/api/catalog')
@@ -208,13 +208,7 @@ export default function CatalogPickerModal({ onClose, onConfirm, initialItems = 
                       <span>{fmt(subtotal)}</span>
                     </div>
                     <div className="catalog-total-row">
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        IVA
-                        <select value={ivaRate} onChange={e => setIvaRate(Number(e.target.value))}
-                          style={{ fontSize: 11, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 4 }}>
-                          <option value={16}>16%</option>
-                        </select>
-                      </span>
+                      <span>IVA 16%</span>
                       <span>{fmt(iva)}</span>
                     </div>
                     <div className="catalog-total-row catalog-grand-total">

@@ -74,14 +74,16 @@ export function processPricingTableNodes(html) {
       try {
         const titleM    = attrs.match(/data-title="([^"]*)"/)
         const b64M      = attrs.match(/data-items-b64="([^"]*)"/)
-        const ivaRateM  = attrs.match(/data-iva-rate="([^"]*)"/)
         const typeM     = attrs.match(/data-table-type="([^"]*)"/)
         const colsM     = attrs.match(/data-columns-b64="([^"]*)"/)
 
         const title     = titleM?.[1] ?? 'Cotización'
         const tableType = typeM?.[1] ?? 'renta'
         const items     = b64M ? JSON.parse(Buffer.from(b64M[1], 'base64').toString('utf8')) : []
-        const ivaRate   = Number(ivaRateM?.[1] ?? 16)
+        // IVA fijo en 16% — ya no es configurable por tabla. No leemos
+        // data-iva-rate: documentos generados antes de este cambio pueden
+        // traerlo guardado en 0 y no hay forma de corregirlo desde la UI.
+        const ivaRate   = 16
         const hdrStyle  = `background:#1B3055;color:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;`
         const TH        = (t,a='left') => `<th style="padding:7px 10px;font-size:8.5pt;text-align:${a};white-space:nowrap;${hdrStyle}">${t}</th>`
         const TD        = (t,a='left',extra='') => `<td style="padding:7px 10px;font-size:9pt;text-align:${a};border-bottom:1px solid #e5e7eb;${extra}">${t??''}</td>`
