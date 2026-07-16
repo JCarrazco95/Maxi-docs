@@ -143,7 +143,11 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
     return () => editor.off('update', handler)
   }, [editor, node.attrs.tableType])
 
-  const { title, itemsB64, ivaRate, tableType = 'renta', columnsB64 } = node.attrs
+  const { title, itemsB64, tableType = 'renta', columnsB64 } = node.attrs
+  // IVA fijo en 16% — ya no es configurable. No usamos node.attrs.ivaRate:
+  // documentos generados antes de este cambio pueden traerlo guardado en 0,
+  // y el selector ya no ofrece otro valor para corregirlo desde la UI.
+  const ivaRate = 16
   const items   = decodeItems(itemsB64)
   const cols    = COLS[tableType] ?? COLS.generic
   const customCols = tableType === 'personalizada' ? decodeColumns(columnsB64) : []
@@ -510,13 +514,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
     // ADECUACIONES: subtotal sin IVA
     const totalAcc  = accItems.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||1), 0)
     const subtotal  = totalTarifas + totalAcc
-    // OJO: "|| 16" trataba 0% como "falta valor" y forzaba 16% — el preview
-    // mostraba/calculaba 16% aunque el atributo real fuera 0, mientras el
-    // backend (que sí usa "?? 16") sí respetaba el 0 real → el PDF salía sin
-    // IVA aunque el editor mostrara 16%. ivaRate ya viene numérico desde el
-    // default del schema (PricingTableExtension), así que no hace falta
-    // fallback aquí.
-    const ivaPct    = Number(ivaRate)
+    const ivaPct    = ivaRate
     const ivaAmt    = subtotal * ivaPct / 100
     const total     = subtotal + ivaAmt
 
@@ -529,13 +527,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
               <span className="pt-title">{title}</span>
             </div>
             <div className="pt-header-right">
-              <label style={{ fontSize:11, color:'rgba(255,255,255,0.85)', display:'flex', alignItems:'center', gap:4 }}>
-                IVA
-                <select className="pt-iva-select" value={ivaPct}
-                  onChange={e => updateAttributes({ ivaRate: Number(e.target.value) })}>
-                  <option value={16}>16%</option>
-                </select>
-              </label>
+              <span style={{ fontSize:11, color:'rgba(255,255,255,0.85)' }}>IVA 16%</span>
             </div>
           </div>
 
@@ -621,13 +613,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
           </div>
           <div className="pt-header-right">
             {!['tarifas','accesorios','acuerdo'].includes(tableType) && (
-              <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                IVA
-                <select className="pt-iva-select" value={ivaRate}
-                  onChange={e => updateAttributes({ ivaRate: Number(e.target.value) })}>
-                  <option value={16}>16%</option>
-                </select>
-              </label>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>IVA 16%</span>
             )}
           </div>
         </div>
