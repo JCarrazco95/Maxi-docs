@@ -111,6 +111,24 @@ CREATE INDEX IF NOT EXISTS idx_signatures_order    ON signatures(document_id, si
 CREATE INDEX IF NOT EXISTS idx_signatures_status   ON signatures(status);
 
 -- =================================================================
+-- DOCUMENT_ATTACHMENTS — Archivos de soporte adjuntos a un documento
+-- =================================================================
+CREATE TABLE IF NOT EXISTS document_attachments (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id       UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  monday_account_id VARCHAR(100),
+  filename          VARCHAR(255) NOT NULL,
+  mime_type         VARCHAR(150),
+  size_bytes        INTEGER,
+  storage_key       TEXT NOT NULL,   -- key en R2 o path relativo en uploads/attachments/
+  file_url          TEXT,            -- URL pública si R2 está configurado
+  uploaded_by       VARCHAR(100),
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_attachments_document ON document_attachments(document_id);
+
+-- =================================================================
 -- DOCUMENT_EVENTS — Auditoría completa de acciones
 -- =================================================================
 CREATE TABLE IF NOT EXISTS document_events (

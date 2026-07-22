@@ -4,8 +4,29 @@ import { sendSignatureRequest, sendSignedNotification, sendViewedNotification } 
 import { embedSignaturesInPdf, saveSignedPdfLocal } from '../services/selfSignService.js';
 import { logEvent, hashPdfFile, hashBuffer } from '../services/auditService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
+import { downloadFile } from '../services/storageService.js';
 
 const router = Router();
+
+// Carga los adjuntos de soporte de un documento y descarga su contenido
+// para incluirlos en el correo de solicitud de firma. No bloqueante: un
+// adjunto roto no debe tirar el envío del correo, solo se omite.
+async function loadAttachmentsForEmail(documentId) {
+  const rows = await query(
+    `SELECT filename, mime_type, storage_key FROM document_attachments WHERE document_id = $1`,
+    [documentId]
+  );
+  const attachments = [];
+  for (const row of rows.rows) {
+    try {
+      const content = await downloadFile(row.storage_key);
+      if (content) attachments.push({ filename: row.filename, mimeType: row.mime_type, content });
+    } catch (e) {
+      console.error('[Attachments] No se pudo cargar adjunto para email:', row.filename, e.message);
+    }
+  }
+  return attachments;
+}
 
 // ── Integración Monday: crear oportunidad al enviar a firma ────
 const OPORTUN_BOARD  = '8311006777';
@@ -211,6 +232,7 @@ router.post('/send', requireEditor, async (req, res) => {
 
   const insertedSignatures = [];
   const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:8301';
+  const emailAttachments = await loadAttachmentsForEmail(document_id).catch(() => []);
 
   for (let i = 0; i < signers.length; i++) {
     const signer       = signers[i];
@@ -257,6 +279,7 @@ router.post('/send', requireEditor, async (req, res) => {
         // ── Gmail del vendedor (si está conectado) ──
         senderAccountId: accountId,
         senderUserId:    document.monday_user_id || userId,
+        attachments:  emailAttachments,
       }).catch(err => console.error('[Email] Error:', err.message));
     }
   }
@@ -470,6 +493,7 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
     const signUrl = next.sign_url || `${PUBLIC_URL}/sign/${next.id}`;
 
     // Enviar email al siguiente firmante (con datos del vendedor del documento original)
+    const nextEmailAttachments = await loadAttachmentsForEmail(sig.document_id).catch(() => []);
     sendSignatureRequest({
       signatureId:  next.id,
       signerName:   next.signer_name,
@@ -483,6 +507,7 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
       // ── Gmail del vendedor original ──
       senderAccountId: sig.monday_account_id,
       senderUserId:    sig.monday_user_id,
+      attachments:  nextEmailAttachments,
     }).catch(err => console.error('[Email] Error next signer:', err.message));
 
     logEvent({

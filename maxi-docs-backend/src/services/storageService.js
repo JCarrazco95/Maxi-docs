@@ -1,8 +1,9 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, readFileSync, existsSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 import 'dotenv/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,9 +69,14 @@ export async function getPresignedDownloadUrl(key, expiresInSeconds = 3600) {
 }
 
 /**
- * Elimina un archivo de R2.
+ * Elimina un archivo de R2 o del filesystem local.
  */
 export async function deleteFile(key) {
+  if (!R2_CONFIGURED) {
+    const filepath = join(ATTACHMENTS_DIR, key.replace(/^attachments\//, ''));
+    if (existsSync(filepath)) unlinkSync(filepath);
+    return;
+  }
   await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
 }
 
@@ -79,4 +85,62 @@ export async function deleteFile(key) {
  */
 export function buildPdfKey(documentId) {
   return `documents/${documentId}.pdf`;
+}
+
+// Carpeta local para archivos que no son el PDF principal del documento
+// (ej. adjuntos de soporte) cuando R2 no está configurado.
+const ATTACHMENTS_DIR = join(__dirname, '../../uploads/attachments');
+
+/**
+ * Construye la key de storage para un adjunto de documento. Incluye un uuid
+ * para evitar colisiones entre archivos con el mismo nombre.
+ */
+export function buildAttachmentKey(documentId, filename) {
+  return `attachments/${documentId}/${randomUUID()}-${filename}`;
+}
+
+/**
+ * Sube un archivo arbitrario (no necesariamente PDF) a R2 o al filesystem
+ * local. A diferencia de uploadPdf, no asume ningún content-type.
+ * @returns {string|null} URL pública si R2 está configurado, null en local
+ *          (el caller sirve el archivo vía la propia API en ese caso).
+ */
+export async function uploadFile(key, buffer, contentType) {
+  if (!R2_CONFIGURED) {
+    const filepath = join(ATTACHMENTS_DIR, key.replace(/^attachments\//, ''));
+    mkdirSync(dirname(filepath), { recursive: true });
+    writeFileSync(filepath, buffer);
+    return null;
+  }
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType || 'application/octet-stream',
+    })
+  );
+  return `${PUBLIC_URL}/${key}`;
+}
+
+async function streamToBuffer(stream) {
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Descarga el contenido de un archivo (R2 o local) como Buffer. Usado para
+ * adjuntarlo a un correo saliente.
+ */
+export async function downloadFile(key) {
+  if (!R2_CONFIGURED) {
+    const filepath = join(ATTACHMENTS_DIR, key.replace(/^attachments\//, ''));
+    if (!existsSync(filepath)) return null;
+    return readFileSync(filepath);
+  }
+
+  const res = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+  return streamToBuffer(res.Body);
 }

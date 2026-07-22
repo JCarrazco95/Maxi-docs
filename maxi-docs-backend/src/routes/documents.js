@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db/connection.js';
 import { fillTemplate, applyVariables, generatePdf, wrapDocumentHtml, processPricingTableNodes } from '../services/pdfService.js';
-import { uploadPdf, buildPdfKey } from '../services/storageService.js';
+import { uploadPdf, buildPdfKey, uploadFile, buildAttachmentKey, deleteFile } from '../services/storageService.js';
 import { buildPricingTableHtml } from '../services/catalogService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { logEvent, hashPdfFile } from '../services/auditService.js';
@@ -601,6 +601,92 @@ router.delete('/:id', requireEditor, async (req, res) => {
     `DELETE FROM documents WHERE id = $1 AND monday_account_id = $2`,
     [req.params.id, accountId]
   );
+  res.status(204).end();
+});
+
+// =================================================================
+// ADJUNTOS — archivos de soporte por documento
+// =================================================================
+
+const ATTACHMENT_MAX_BYTES = 15 * 1024 * 1024; // 15MB
+const ATTACHMENT_ALLOWED_MIME = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+
+// GET /api/documents/:id/attachments
+router.get('/:id/attachments', async (req, res) => {
+  const { accountId } = req.mondayContext;
+  const doc = await query(
+    `SELECT id FROM documents WHERE id = $1 AND monday_account_id = $2`,
+    [req.params.id, accountId]
+  );
+  if (!doc.rows[0]) return res.status(404).json({ error: 'Documento no encontrado' });
+
+  const result = await query(
+    `SELECT id, filename, mime_type, size_bytes, file_url, created_at
+     FROM document_attachments WHERE document_id = $1 ORDER BY created_at ASC`,
+    [req.params.id]
+  );
+  res.json(result.rows);
+});
+
+// POST /api/documents/:id/attachments — body: { filename, mime_type, data_base64 }
+router.post('/:id/attachments', requireEditor, async (req, res) => {
+  const { accountId, userId } = req.mondayContext;
+  const { filename, mime_type, data_base64 } = req.body;
+
+  if (!filename || !data_base64) {
+    return res.status(400).json({ error: 'filename y data_base64 son requeridos' });
+  }
+  if (!ATTACHMENT_ALLOWED_MIME.has(mime_type)) {
+    return res.status(400).json({ error: `Tipo de archivo no permitido: ${mime_type || 'desconocido'}` });
+  }
+
+  const doc = await query(
+    `SELECT id FROM documents WHERE id = $1 AND monday_account_id = $2`,
+    [req.params.id, accountId]
+  );
+  if (!doc.rows[0]) return res.status(404).json({ error: 'Documento no encontrado' });
+
+  // data_base64 puede venir como data URL ("data:<mime>;base64,xxx") o base64 puro
+  const b64      = data_base64.includes(',') ? data_base64.split(',')[1] : data_base64;
+  const buffer   = Buffer.from(b64, 'base64');
+  if (buffer.length > ATTACHMENT_MAX_BYTES) {
+    return res.status(400).json({ error: `El archivo excede el máximo de ${ATTACHMENT_MAX_BYTES / 1024 / 1024}MB` });
+  }
+
+  const storageKey = buildAttachmentKey(req.params.id, filename);
+  const fileUrl    = await uploadFile(storageKey, buffer, mime_type);
+
+  const inserted = await query(
+    `INSERT INTO document_attachments
+       (document_id, monday_account_id, filename, mime_type, size_bytes, storage_key, file_url, uploaded_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, filename, mime_type, size_bytes, file_url, created_at`,
+    [req.params.id, accountId, filename, mime_type, buffer.length, storageKey, fileUrl, userId]
+  );
+
+  res.status(201).json(inserted.rows[0]);
+});
+
+// DELETE /api/documents/:id/attachments/:attachmentId
+router.delete('/:id/attachments/:attachmentId', requireEditor, async (req, res) => {
+  const { accountId } = req.mondayContext;
+  const result = await query(
+    `DELETE FROM document_attachments
+     WHERE id = $1 AND document_id = $2 AND monday_account_id = $3
+     RETURNING id, storage_key`,
+    [req.params.attachmentId, req.params.id, accountId]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: 'Adjunto no encontrado' });
+  deleteFile(result.rows[0].storage_key).catch(err => console.error('[Attachments] Error borrando archivo:', err.message));
   res.status(204).end();
 });
 

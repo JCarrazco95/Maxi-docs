@@ -35,7 +35,8 @@ function extractEmail(fromStr) {
   return m ? m[1] : (fromStr || '').trim()
 }
 
-async function send({ to, subject, html, from: fromOverride, replyTo }) {
+// attachments: [{ filename, content: Buffer, mimeType }] — opcional
+async function send({ to, subject, html, from: fromOverride, replyTo, attachments }) {
   const provider = getProvider();
 
   if (!provider) {
@@ -50,6 +51,9 @@ async function send({ to, subject, html, from: fromOverride, replyTo }) {
   if (provider === 'resend') {
     const body = { from: fromAddress, to: recipients, subject, html };
     if (replyTo) body.reply_to = replyTo;   // Resend usa reply_to
+    if (attachments?.length) {
+      body.attachments = attachments.map(a => ({ filename: a.filename, content: a.content.toString('base64') }));
+    }
     const res = await fetch('https://api.resend.com/emails', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RESEND_KEY}` },
@@ -64,6 +68,9 @@ async function send({ to, subject, html, from: fromOverride, replyTo }) {
   // SMTP (nodemailer)
   const mail = { from: fromAddress, to: recipients.join(', '), subject, html };
   if (replyTo) mail.replyTo = replyTo;      // nodemailer usa replyTo
+  if (attachments?.length) {
+    mail.attachments = attachments.map(a => ({ filename: a.filename, content: a.content, contentType: a.mimeType }));
+  }
   const info = await getSmtp().sendMail(mail);
   console.log('[Email/SMTP] ✅ Enviado a', recipients.join(', '), '— MsgID:', info.messageId);
   return info;
@@ -216,6 +223,7 @@ export async function sendSignatureRequest({
   signatureId, signerName, signerEmail, documentName, signUrl,
   senderNote, senderName, senderEmail, expireDays,
   senderAccountId, senderUserId,   // ← NUEVO: para enviar desde Gmail del vendedor
+  attachments,                     // [{ filename, content: Buffer, mimeType }] — opcional
 }) {
   const portalUrl = buildPortalUrl(signatureId, signUrl);
   const subject   = `✍️ Documento para firma: ${documentName}`;
@@ -234,6 +242,7 @@ export async function sendSignatureRequest({
           html,
           fromName:  senderName || 'MAXIRent',
           replyTo:   senderEmail || undefined,
+          attachments,
         });
       }
     } catch (e) {
@@ -254,6 +263,7 @@ export async function sendSignatureRequest({
     html,
     from:    fromDisplay,
     replyTo: senderEmail || undefined,
+    attachments,
   });
 }
 
