@@ -121,22 +121,159 @@ function WorkflowPanel({ onClose }) {
   )
 }
 
-// ── Panel Adjuntos (placeholder) ──────────────────────────────
-function AttachmentsPanel({ onClose }) {
+// ── Panel Adjuntos ──────────────────────────────────────────────
+const ATTACHMENT_ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx'
+
+function formatBytes(n) {
+  if (!n && n !== 0) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function attachmentIcon(mime) {
+  if (!mime) return '📎'
+  if (mime === 'application/pdf') return '📄'
+  if (mime.startsWith('image/')) return '🖼️'
+  if (mime.includes('word'))       return '📝'
+  if (mime.includes('sheet') || mime.includes('excel')) return '📊'
+  return '📎'
+}
+
+function AttachmentsPanel({ documentId, onClose }) {
+  const [attachments, setAttachments] = useState([])
+  const [loading,     setLoading]     = useState(false)
+  const [uploading,   setUploading]   = useState(false)
+  const [error,       setError]       = useState(null)
+  const fileInputRef = useRef(null)
+
+  const loadAttachments = useCallback(() => {
+    if (!documentId) return
+    setLoading(true)
+    api.get(`/api/documents/${documentId}/attachments`)
+      .then(res => setAttachments(res.data))
+      .catch(() => setError('No se pudieron cargar los adjuntos'))
+      .finally(() => setLoading(false))
+  }, [documentId])
+
+  useEffect(() => { loadAttachments() }, [loadAttachments])
+
+  function handleFiles(e) {
+    const files = Array.from(e.target.files || [])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (!files.length) return
+
+    setUploading(true)
+    setError(null)
+
+    const uploadOne = file => new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = async ev => {
+        try {
+          await api.post(`/api/documents/${documentId}/attachments`, {
+            filename:    file.name,
+            mime_type:   file.type,
+            data_base64: ev.target.result,
+          })
+          resolve()
+        } catch (err) {
+          reject(err)
+        }
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+    Promise.allSettled(files.map(uploadOne))
+      .then(results => {
+        const failed = results.filter(r => r.status === 'rejected')
+        if (failed.length) {
+          setError(failed[0].reason?.response?.data?.error || 'No se pudo subir uno o más archivos')
+        }
+        loadAttachments()
+      })
+      .finally(() => setUploading(false))
+  }
+
+  function handleDelete(attachmentId) {
+    api.delete(`/api/documents/${documentId}/attachments/${attachmentId}`)
+      .then(() => setAttachments(prev => prev.filter(a => a.id !== attachmentId)))
+      .catch(() => setError('No se pudo eliminar el adjunto'))
+  }
+
   return (
     <div style={rp.panel}>
       <div style={rp.panelHeader}>
         <span style={rp.panelTitle}>Adjuntos</span>
         <button onClick={onClose} style={rp.closeBtn}><IcoX /></button>
       </div>
-      <div style={{ padding: 20, color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>
-        <div style={{ fontSize: 32, marginBottom: 12 }}>📎</div>
-        <div style={{ fontWeight: 600, color: '#323338', marginBottom: 6 }}>Archivos adjuntos</div>
-        <div>Añade documentos de soporte a este archivo.</div>
-        <div style={{ marginTop: 16, padding: '8px 12px', background: '#f6f7fb', borderRadius: 8, fontSize: 12, color: '#676879' }}>
-          Próximamente disponible
+
+      {!documentId ? (
+        <div style={{ padding: 20, color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📎</div>
+          <div style={{ fontWeight: 600, color: '#323338', marginBottom: 6 }}>Archivos adjuntos</div>
+          <div>Guarda o genera el documento primero para poder adjuntar archivos.</div>
         </div>
-      </div>
+      ) : (
+        <div style={{ padding: 14, overflow: 'auto', flex: 1 }}>
+          <div style={{ fontSize: 12, color: '#676879', marginBottom: 12 }}>
+            Se incluyen automáticamente en el correo cuando envías este documento a firma.
+          </div>
+
+          <input ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT}
+            style={{ display: 'none' }} onChange={handleFiles} />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{
+              width: '100%', padding: '10px 14px', marginBottom: 14,
+              border: '1px dashed #c3c6d4', borderRadius: 8, background: '#f6f7fb',
+              color: '#1B3055', fontSize: 13, fontWeight: 600, cursor: uploading ? 'default' : 'pointer',
+              opacity: uploading ? 0.6 : 1,
+            }}
+          >
+            {uploading ? 'Subiendo…' : '📁 Subir archivo'}
+          </button>
+
+          {error && (
+            <div style={{ marginBottom: 12, padding: '8px 10px', background: '#fef2f2', color: '#b91c1c', borderRadius: 6, fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 20 }}>Cargando…</div>
+          ) : attachments.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 20 }}>
+              Sin archivos adjuntos todavía.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {attachments.map(a => (
+                <div key={a.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '8px 10px', border: '1px solid #e0e2ea', borderRadius: 8,
+                }}>
+                  <span style={{ fontSize: 18 }}>{attachmentIcon(a.mime_type)}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: '#323338', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {a.filename}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{formatBytes(a.size_bytes)}</div>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(a.id)}
+                    title="Eliminar"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9699a6', padding: 4, flexShrink: 0 }}
+                  >
+                    <IcoX />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -795,7 +932,7 @@ export default function EditorPage() {
                 <WorkflowPanel onClose={() => setActivePanel(null)} />
               )}
               {activePanel === 'attachments' && (
-                <AttachmentsPanel onClose={() => setActivePanel(null)} />
+                <AttachmentsPanel documentId={session?.documentId || generatedDocId} onClose={() => setActivePanel(null)} />
               )}
               {activePanel === 'preview' && (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

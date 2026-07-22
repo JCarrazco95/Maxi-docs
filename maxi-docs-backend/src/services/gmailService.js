@@ -168,23 +168,61 @@ function chunkBase64(b64) {
 }
 
 // ── Construir RFC 5322 message + enviar ────────────────────────
-function buildRawMessage({ from, to, subject, html, replyTo }) {
-  const bodyB64 = chunkBase64(Buffer.from(html, 'utf8').toString('base64'))
-  const lines = [
+// attachments: [{ filename, content: Buffer, mimeType }] — opcional. Si hay
+// adjuntos se arma un multipart/mixed (primera parte el HTML, luego una
+// parte por adjunto); si no, se mantiene el mensaje simple de siempre.
+function buildRawMessage({ from, to, subject, html, replyTo, attachments }) {
+  const headerLines = [
     `From: ${from}`,
     `To: ${Array.isArray(to) ? to.join(', ') : to}`,
     replyTo ? `Reply-To: ${replyTo}` : null,
     `Subject: =?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`,
     'MIME-Version: 1.0',
+  ].filter(v => v !== null && v !== undefined)
+
+  if (!attachments?.length) {
+    const bodyB64 = chunkBase64(Buffer.from(html, 'utf8').toString('base64'))
+    const lines = [
+      ...headerLines,
+      `Content-Type: text/html; charset="UTF-8"`,
+      'Content-Transfer-Encoding: base64',
+      '',         // línea vacía obligatoria entre headers y body
+      bodyB64,
+    ]
+    return Buffer.from(lines.join('\r\n'), 'utf8').toString('base64url')
+  }
+
+  const boundary = `----maxidocs-${Date.now().toString(36)}`
+  const parts = [
+    `--${boundary}`,
     `Content-Type: text/html; charset="UTF-8"`,
     'Content-Transfer-Encoding: base64',
-    '',         // línea vacía obligatoria entre headers y body
-    bodyB64,
-  ].filter(v => v !== null && v !== undefined)
+    '',
+    chunkBase64(Buffer.from(html, 'utf8').toString('base64')),
+  ]
+  for (const att of attachments) {
+    const safeName = String(att.filename || 'adjunto').replace(/"/g, "'")
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${att.mimeType || 'application/octet-stream'}; name="${safeName}"`,
+      `Content-Disposition: attachment; filename="${safeName}"`,
+      'Content-Transfer-Encoding: base64',
+      '',
+      chunkBase64(att.content.toString('base64')),
+    )
+  }
+  parts.push(`--${boundary}--`)
+
+  const lines = [
+    ...headerLines,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    ...parts,
+  ]
   return Buffer.from(lines.join('\r\n'), 'utf8').toString('base64url')
 }
 
-export async function sendViaGmail({ accountId, userId, to, subject, html, fromName, replyTo }) {
+export async function sendViaGmail({ accountId, userId, to, subject, html, fromName, replyTo, attachments }) {
   const integ = await getIntegration(accountId, userId)
   if (!integ) throw new Error('Usuario no tiene Gmail conectado')
 
@@ -200,6 +238,7 @@ export async function sendViaGmail({ accountId, userId, to, subject, html, fromN
     subject,
     html,
     replyTo: replyTo || integ.email,  // por defecto el cliente responde al vendedor
+    attachments,
   })
 
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
