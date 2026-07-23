@@ -516,7 +516,11 @@ router.post('/generate', requireEditor, async (req, res) => {
     clientName,
     clientEmail,
     mondayLeadId: monday_item_id,   // Pulse ID del lead original → para la board_relation
-    html:         filledHtml,
+    // storedHtml conserva las <pricing-table> intactas (con data-items-b64);
+    // filledHtml ya las expandió a <table> para el PDF y no sirve para extraer
+    // los valores de la cotización (extractPricingTotal/extractQuoteValues
+    // buscan literalmente la etiqueta <pricing-table>).
+    html:         storedHtml,
     mondayUserId: userId,
   });
 
