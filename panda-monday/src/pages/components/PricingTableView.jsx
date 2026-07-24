@@ -143,6 +143,18 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
     return () => editor.off('update', handler)
   }, [editor, node.attrs.tableType])
 
+  // pricing-table es un nodo "atom" seleccionable — si queda seleccionado
+  // (NodeSelection) por debajo del modal de catálogo y el usuario escribe sin
+  // haber hecho click primero en el buscador, ProseMirror interpreta la tecla
+  // como "reemplazar el nodo seleccionado por texto": borra la tabla entera.
+  // Mientras el catálogo está abierto, el editor completo queda no-editable
+  // para que ninguna tecla perdida pueda tocar el documento.
+  useEffect(() => {
+    if (!editor) return
+    if (catalogOpen) editor.setEditable(false)
+    return () => editor.setEditable(true)
+  }, [editor, catalogOpen])
+
   const { title, itemsB64, tableType = 'renta', columnsB64 } = node.attrs
   // IVA fijo en 16% — ya no es configurable. No usamos node.attrs.ivaRate:
   // documentos generados antes de este cambio pueden traerlo guardado en 0,
