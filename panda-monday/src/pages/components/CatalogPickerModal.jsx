@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../../api/client.js'
 
 const fmt = n => `$${Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
@@ -20,6 +20,7 @@ export default function CatalogPickerModal({ onClose, onConfirm, initialItems = 
     Object.fromEntries(initialItems.map(i => [i.id, i.quantity]))
   )
   const ivaRate = 16 // IVA fijo — ya no es configurable
+  const searchInputRef = useRef(null)
 
   useEffect(() => {
     api.get('/api/catalog')
@@ -34,6 +35,12 @@ export default function CatalogPickerModal({ onClose, onConfirm, initialItems = 
       })
       .catch(() => { setError('Error al cargar el catálogo'); setLoading(false) })
   }, [])
+
+  // Autoenfocar el buscador en cuanto el catálogo termina de cargar, para que
+  // se pueda escribir de inmediato sin tener que hacer click primero.
+  useEffect(() => {
+    if (!loading && catalog) searchInputRef.current?.focus()
+  }, [loading, catalog])
 
   function setQty(productId, qty) {
     const n = Math.max(0, parseInt(qty) || 0)
@@ -109,6 +116,7 @@ export default function CatalogPickerModal({ onClose, onConfirm, initialItems = 
               <div className="catalog-search">
                 <IconSearch />
                 <input
+                  ref={searchInputRef}
                   className="filter-search-input"
                   placeholder="Buscar por nombre o SKU…"
                   value={search}
