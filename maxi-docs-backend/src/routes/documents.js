@@ -14,17 +14,21 @@ const MONDAY_COTIZACIONES_BOARD = '8311006777';
 const MONDAY_COTIZACIONES_GROUP = 'topics'; // "Cotizaciones enviadas"
 
 // Columnas del board Oportunidades Maxirent
-const COL_RAZON_SOCIAL  = 'text_mkvxs7sb';       // Razón social
-const COL_MONTO_TOTAL   = 'n_meros_mkmfsgxr';    // Valor del acuerdo
-const COL_VALOR_COT     = 'deal_value';           // Valor de la cotización
-const COL_FECHA_EMISION = 'deal_creation_date';   // Fecha de creación del acuerdo
-const COL_ESTADO_COT    = 'color_mktmr9yy';       // Estado cotización → "Enviado"
-const COL_ETAPA         = 'deal_stage';           // Etapa → "Cotización enviada"
-const COL_RESPONSABLE   = 'deal_owner';           // Ejecutivo (people)
-const COL_PDF           = 'archivo_mkmghcc4';     // Cotización (file)
-const COL_FOLIO         = 'text_mktmgv5z';        // Folio Pandadoc
-const COL_EMAIL         = 'Email';                // Dirección de e-mail principal del contacto
-const COL_LEAD_RELATION = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent (pulse ID del lead)
+const COL_RAZON_SOCIAL   = 'text_mkvxs7sb';       // Razón social
+const COL_RENTA_MENSUAL  = 'n_meros_mkmfsgxr';    // Renta mensual (sin entrega/recolección)
+const COL_VALOR_COT      = 'deal_value';          // Valor de la cotización (totalSinIVA)
+const COL_ENTREGA_RECOLECCION = 'numeric_mm5hf4w2'; // Suma de entrega + recolección
+const COL_ADECUACIONES   = 'numeric_mm5hm90x';    // subtotalAdecuaciones
+const COL_UNIDADES       = 'dropdown_mm5h76r5';   // Nombres de las unidades cotizadas
+const COL_UNIDADES_COUNT = 'numeric_mm5h3vj5';    // Cantidad total de unidades
+const COL_FECHA_EMISION  = 'deal_creation_date';  // Fecha de creación del acuerdo
+const COL_ESTADO_COT     = 'color_mktmr9yy';      // Estado cotización → "Enviado"
+const COL_ETAPA          = 'deal_stage';          // Etapa → "Cotización enviada"
+const COL_RESPONSABLE    = 'deal_owner';          // Ejecutivo (people)
+const COL_PDF            = 'archivo_mkmghcc4';    // Cotización (file)
+const COL_FOLIO          = 'text_mktmgv5z';       // Folio Pandadoc
+const COL_EMAIL          = 'Email';               // Dirección de e-mail principal del contacto
+const COL_LEAD_RELATION  = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent (pulse ID del lead)
 
 // Extrae el total de todas las tablas de precios en el HTML
 function extractPricingTotal(html) {
@@ -89,12 +93,14 @@ function extractPricingTotal(html) {
 function extractQuoteValues(html) {
   if (!html) return null;
   const values = {
-    subtotalTarifas:    0,   // Suma de renta mensual + entrega + recolección (sin IVA)
+    rentaMensual:       0,   // Suma de renta mensual sola (dailyRate * 30 * qty, sin entrega/recolección)
+    entregaRecoleccion: 0,   // Suma de entrega + recolección sola
+    subtotalTarifas:    0,   // Suma de renta mensual + entrega + recolección (sin IVA) — rentaMensual + entregaRecoleccion
     subtotalAdecuaciones: 0, // Suma de accesorios (sin IVA)
     totalSinIVA:        0,   // subtotalTarifas + subtotalAdecuaciones
     totalConIVA:        0,   // (totalSinIVA) * 1.16
     ivaMonto:           0,   // totalSinIVA * 0.16
-    unidades:           [],  // ['Hino 3.5 caja Seca', ...] — nombres de las unidades
+    unidades:           [],  // ['Hino 3.5 caja Seca', ...] — nombres de las unidades (sin duplicados)
     unidadesCount:      0,   // Cantidad total de unidades (suma de quantities)
     primeraUnidad:      '',  // Nombre de la primera unidad (por si solo se mapea una)
   };
@@ -119,7 +125,9 @@ function extractQuoteValues(html) {
           const mensual   = (Number(i.dailyRate) || 0) * 30 * qty;
           const delivery  = Number(i.delivery)  || 0;
           const retrieval = Number(i.retrieval) || 0;
-          values.subtotalTarifas += mensual + delivery + retrieval;
+          values.rentaMensual       += mensual;
+          values.entregaRecoleccion += delivery + retrieval;
+          values.subtotalTarifas    += mensual + delivery + retrieval;
           if (i.name) {
             values.unidades.push(i.name);
             if (!values.primeraUnidad) values.primeraUnidad = i.name;
@@ -132,6 +140,7 @@ function extractQuoteValues(html) {
     } catch { /* skip */ }
   }
 
+  values.unidades    = [...new Set(values.unidades)];
   values.totalSinIVA = Math.round(values.subtotalTarifas + values.subtotalAdecuaciones);
   values.ivaMonto    = Math.round(values.totalSinIVA * 0.16);
   values.totalConIVA = Math.round(values.totalSinIVA * 1.16);
@@ -166,14 +175,23 @@ async function createMondayDocItem({ docNumber, docName, clientName, clientEmail
     }
 
     const colValues = {
-      [COL_RAZON_SOCIAL]:  client,
-      [COL_MONTO_TOTAL]:   String(computed),
-      [COL_VALOR_COT]:     String(computed),
-      [COL_FECHA_EMISION]: { date: today },
-      [COL_ESTADO_COT]:    { label: 'Enviado' },
-      [COL_ETAPA]:         { label: 'Cotización enviada' },
-      [COL_FOLIO]:         docNumber,
+      [COL_RAZON_SOCIAL]:       client,
+      [COL_RENTA_MENSUAL]:      String(Math.round(quoteValues?.rentaMensual ?? 0)),
+      [COL_VALOR_COT]:          String(quoteValues?.totalSinIVA ?? 0),
+      [COL_ENTREGA_RECOLECCION]:String(Math.round(quoteValues?.entregaRecoleccion ?? 0)),
+      [COL_ADECUACIONES]:       String(Math.round(quoteValues?.subtotalAdecuaciones ?? 0)),
+      [COL_UNIDADES_COUNT]:     String(quoteValues?.unidadesCount ?? 0),
+      [COL_FECHA_EMISION]:      { date: today },
+      [COL_ESTADO_COT]:         { label: 'Enviado' },
+      [COL_ETAPA]:              { label: 'Cotización enviada' },
+      [COL_FOLIO]:              docNumber,
     };
+
+    // Dropdown de unidades cotizadas — create_labels_if_missing en la mutation
+    // crea las opciones automáticamente si el nombre de la unidad no existe todavía.
+    if (quoteValues?.unidades?.length) {
+      colValues[COL_UNIDADES] = { labels: quoteValues.unidades };
+    }
 
     if (mondayUserId && mondayUserId !== 'dev') {
       colValues[COL_RESPONSABLE] = { personsAndTeams: [{ id: Number(mondayUserId), kind: 'person' }] };
@@ -199,7 +217,8 @@ async function createMondayDocItem({ docNumber, docName, clientName, clientEmail
           board_id: ${MONDAY_COTIZACIONES_BOARD},
           group_id: "${MONDAY_COTIZACIONES_GROUP}",
           item_name: ${JSON.stringify(itemName)},
-          column_values: ${JSON.stringify(JSON.stringify(colValues))}
+          column_values: ${JSON.stringify(JSON.stringify(colValues))},
+          create_labels_if_missing: true
         ) { id }
       }
     `;
