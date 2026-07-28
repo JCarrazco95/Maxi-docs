@@ -136,6 +136,22 @@ export async function getIntegration(accountId, userId) {
   return r.rows[0] || null
 }
 
+// Verifica si el refresh_token guardado todavía es válido con Google —
+// a diferencia de solo mirar si existe la fila en DB (que no dice nada
+// sobre si el token fue revocado o expiró). Intenta un refresh real; si
+// Google responde invalid_grant, el token está muerto y hay que
+// reconectar. No consume el refresh_token (es reutilizable).
+export async function checkTokenValid(accountId, userId) {
+  const integ = await getIntegration(accountId, userId)
+  if (!integ) return { connected: false }
+  try {
+    await refreshAccessToken(decrypt(integ.refresh_token))
+    return { connected: true, tokenValid: true, email: integ.email, connectedAt: integ.connected_at }
+  } catch (e) {
+    return { connected: true, tokenValid: false, email: integ.email, connectedAt: integ.connected_at, reason: e.message }
+  }
+}
+
 // ── Guardar / actualizar integración ───────────────────────────
 export async function saveIntegration({ accountId, userId, email, refreshToken, scopes }) {
   const encrypted = encrypt(refreshToken)

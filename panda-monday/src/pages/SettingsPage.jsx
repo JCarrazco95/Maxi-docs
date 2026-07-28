@@ -25,15 +25,21 @@ export default function SettingsPage({ isAdmin }) {
   const [addingHook, setAddingHook] = useState(false)
 
   // ── Gmail integration ──────────────────────────────────────
-  const [gmail, setGmail] = useState({ loading: true, connected: false, email: null })
+  const [gmail, setGmail] = useState({ loading: true, connected: false, tokenValid: true, email: null })
   const [gmailMsg, setGmailMsg] = useState(null)   // success/error tras callback
 
   async function reloadGmailStatus() {
     try {
       const r = await api.get('/api/integrations/gmail/status')
-      setGmail({ loading: false, connected: !!r.data.connected, email: r.data.email || null })
+      setGmail({
+        loading:    false,
+        connected:  !!r.data.connected,
+        // tokenValid solo viene cuando connected=true; si no hay conexión no aplica.
+        tokenValid: r.data.tokenValid !== false,
+        email:      r.data.email || null,
+      })
     } catch {
-      setGmail({ loading: false, connected: false, email: null })
+      setGmail({ loading: false, connected: false, tokenValid: true, email: null })
     }
   }
 
@@ -229,6 +235,26 @@ export default function SettingsPage({ isAdmin }) {
 
           {gmail.loading ? (
             <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>Cargando…</div>
+          ) : gmail.connected && !gmail.tokenValid ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: '50%', background: '#fdecec',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+                }}>⚠️</div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#b91c1c' }}>
+                    Tu conexión con Gmail expiró: <span>{gmail.email}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                    Los correos de firma no se están enviando desde tu cuenta. Reconecta para arreglarlo.
+                  </div>
+                </div>
+              </div>
+              <button onClick={connectGmail} className="btn btn-primary">
+                Reconectar Gmail
+              </button>
+            </div>
           ) : gmail.connected ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
