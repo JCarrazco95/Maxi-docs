@@ -16,8 +16,8 @@ import {
   exchangeCodeForTokens,
   resolveUserEmail,
   saveIntegration,
-  getIntegration,
   deleteIntegration,
+  checkTokenValid,
 } from '../services/gmailService.js';
 
 const router = Router();
@@ -139,15 +139,18 @@ router.get('/gmail/callback', async (req, res) => {
   }
 });
 
-// GET /api/integrations/gmail/status — saber si el usuario actual tiene Gmail conectado
+// GET /api/integrations/gmail/status — saber si el usuario actual tiene Gmail
+// conectado Y si el token todavía es válido (no solo si existe la fila en DB
+// — un refresh_token revocado o expirado seguía mostrando "conectado" antes).
 router.get('/gmail/status', async (req, res) => {
   const { accountId, userId } = req.mondayContext;
-  const integ = await getIntegration(accountId, userId);
-  if (!integ) return res.json({ connected: false });
+  const status = await checkTokenValid(accountId, userId);
+  if (!status.connected) return res.json({ connected: false });
   res.json({
     connected:    true,
-    email:        integ.email,
-    connected_at: integ.connected_at,
+    tokenValid:   status.tokenValid,
+    email:        status.email,
+    connected_at: status.connectedAt,
   });
 });
 
