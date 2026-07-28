@@ -73,9 +73,12 @@ export default function SettingsPage({ isAdmin }) {
       const poll = setInterval(async () => {
         try {
           const s = await api.get('/api/integrations/gmail/status')
-          if (s.data?.connected) {
+          // connected=true aquí solo dice "existe una fila" — tokenValid (recién
+          // otorgado por Google, así que debería venir true) es lo que realmente
+          // importa para no mostrar el aviso de "expiró" justo después de conectar.
+          if (s.data?.connected && s.data?.tokenValid !== false) {
             clearInterval(poll)
-            setGmail({ loading: false, connected: true, email: s.data.email })
+            setGmail({ loading: false, connected: true, tokenValid: true, email: s.data.email })
             setGmailMsg({ type: 'success', text: `✅ Conectado: ${s.data.email}` })
             try { popup.close() } catch {}
             return
@@ -91,8 +94,8 @@ export default function SettingsPage({ isAdmin }) {
           clearInterval(poll)
           // No mostrar error si ya hay éxito; verificar una última vez
           api.get('/api/integrations/gmail/status').then(s2 => {
-            if (s2.data?.connected) {
-              setGmail({ loading: false, connected: true, email: s2.data.email })
+            if (s2.data?.connected && s2.data?.tokenValid !== false) {
+              setGmail({ loading: false, connected: true, tokenValid: true, email: s2.data.email })
               setGmailMsg({ type: 'success', text: `✅ Conectado: ${s2.data.email}` })
             } else {
               setGmailMsg({ type: 'error', text: 'Conexión cancelada o no completada.' })
@@ -109,7 +112,7 @@ export default function SettingsPage({ isAdmin }) {
     if (!confirm('¿Desconectar tu Gmail? Los próximos correos se enviarán desde el correo genérico de MaxiDocs.')) return
     try {
       await api.delete('/api/integrations/gmail/disconnect')
-      setGmail({ loading: false, connected: false, email: null })
+      setGmail({ loading: false, connected: false, tokenValid: true, email: null })
       setGmailMsg({ type: 'success', text: 'Gmail desconectado' })
     } catch (e) {
       setGmailMsg({ type: 'error', text: e.response?.data?.error || e.message })
@@ -148,7 +151,7 @@ export default function SettingsPage({ isAdmin }) {
       const d = ev?.data
       if (!d || d.type !== 'gmail-oauth') return
       if (d.status === 'connected') {
-        setGmail({ loading: false, connected: true, email: d.email })
+        setGmail({ loading: false, connected: true, tokenValid: true, email: d.email })
         setGmailMsg({ type: 'success', text: `✅ Conectado: ${d.email}` })
       } else if (d.status === 'error') {
         setGmailMsg({ type: 'error', text: `❌ Error: ${d.reason || 'desconocido'}` })
