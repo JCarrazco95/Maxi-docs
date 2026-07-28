@@ -40,7 +40,7 @@ const COL_ETAPA      = 'deal_stage';
 const COL_EJECUTIVO  = 'deal_owner';
 const COL_FOLIO      = 'text_mktmgv5z';
 const COL_PDF_FILE   = 'archivo_mkmghcc4';
-const COL_EMAIL      = 'Email';   // Dirección de e-mail principal del contacto
+const COL_EMAIL      = 'email';   // Dirección de e-mail principal del contacto
 const COL_LEAD_RELATION = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent
 
 async function mondayGql(query, token) {

@@ -27,7 +27,7 @@ const COL_ETAPA          = 'deal_stage';          // Etapa → "Cotización envi
 const COL_RESPONSABLE    = 'deal_owner';          // Ejecutivo (people)
 const COL_PDF            = 'archivo_mkmghcc4';    // Cotización (file)
 const COL_FOLIO          = 'text_mktmgv5z';       // Folio Pandadoc
-const COL_EMAIL          = 'Email';               // Dirección de e-mail principal del contacto
+const COL_EMAIL          = 'email';               // Dirección de e-mail principal del contacto
 const COL_LEAD_RELATION  = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent (pulse ID del lead)
 
 // Extrae el total de todas las tablas de precios en el HTML
