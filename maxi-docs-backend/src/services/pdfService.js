@@ -273,8 +273,10 @@ export async function generatePdf(html) {
 /**
  * Genera un PNG thumbnail (miniatura) de la primera página del HTML.
  * Viewport A4 a escala reducida. Devuelve la URL pública del PNG.
+ * `prefix` distingue miniaturas de plantillas ('tpl', default) de las de
+ * documentos generados ('doc') — mismo mecanismo, distinto namespace de archivo.
  */
-export async function generateThumbnail(html, templateId) {
+export async function generateThumbnail(html, templateId, prefix = 'tpl') {
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: resolveExecutablePath(),
@@ -297,7 +299,7 @@ export async function generateThumbnail(html, templateId) {
 
     const dir = pathJoin(__dirnamePdf, '../../uploads/thumbnails');
     mkdirSync(dir, { recursive: true });
-    const filename = `tpl_${templateId}.png`;
+    const filename = `${prefix}_${templateId}.png`;
     writeFileSync(pathJoin(dir, filename), buffer);
 
     const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;

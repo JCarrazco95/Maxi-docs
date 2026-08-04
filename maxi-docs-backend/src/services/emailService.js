@@ -78,7 +78,7 @@ async function send({ to, subject, html, from: fromOverride, replyTo, attachment
 
 // ── Templates ─────────────────────────────────────────────────
 
-function signatureRequestTemplate({ signerName, documentName, signUrl, senderNote, senderName, expireDays }) {
+function signatureRequestTemplate({ signerName, documentName, signUrl, senderNote, senderName, expireDays, previewImageUrl }) {
   const expiryText = expireDays ? `Este enlace expira en ${expireDays} días.` : '';
   const from = senderName ? `${senderName} — MAXIRent Renta Empresarial` : 'MAXIRent Renta Empresarial';
   return `
@@ -87,7 +87,7 @@ function signatureRequestTemplate({ signerName, documentName, signUrl, senderNot
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Documento para firma</title>
+<title>Propuesta comercial</title>
 </head>
 <body style="margin:0;padding:0;background:#f6f7fb;font-family:Arial,Helvetica,sans-serif;">
 <div style="max-width:560px;margin:32px auto;background:white;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
@@ -107,7 +107,7 @@ function signatureRequestTemplate({ signerName, documentName, signUrl, senderNot
   <div style="padding:32px;">
     <p style="font-size:16px;font-weight:600;color:#323338;margin:0 0 8px;">Hola, ${signerName} 👋</p>
     <p style="font-size:14px;color:#676879;line-height:1.6;margin:0 0 24px;">
-      Tienes un documento pendiente de firma:
+      Tienes una propuesta comercial pendiente de revisión:
     </p>
 
     <!-- Doc card -->
@@ -115,6 +115,12 @@ function signatureRequestTemplate({ signerName, documentName, signUrl, senderNot
       <div style="font-size:12px;color:#9699a6;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Documento</div>
       <div style="font-size:16px;font-weight:700;color:#323338;">${documentName}</div>
     </div>
+
+    ${previewImageUrl ? `
+    <!-- Vista previa del documento -->
+    <div style="margin:0 0 24px;border:1px solid #e0e2ea;border-radius:8px;overflow:hidden;">
+      <img src="${previewImageUrl}" alt="Vista previa de ${documentName}" width="496" style="display:block;width:100%;max-width:496px;height:auto;">
+    </div>` : ''}
 
     <p style="font-size:13px;color:#676879;margin:0 0 16px;">
       Te envía esta propuesta: <strong style="color:#1B3055;">${from}</strong>
@@ -133,14 +139,14 @@ function signatureRequestTemplate({ signerName, documentName, signUrl, senderNot
                    href="${signUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="13%" stroke="f" fillcolor="#0073ea">
         <w:anchorlock/>
         <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">
-          Firmar documento
+          Revisar Propuesta Comercial
         </center>
       </v:roundrect>
       <![endif]-->
       <!--[if !mso]><!-- -->
       <a href="${signUrl}"
          style="display:inline-block;background-color:#0073ea;background-image:linear-gradient(135deg,#0073ea,#0060c0);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:6px;font-size:15px;font-weight:700;letter-spacing:0.2px;mso-padding-alt:0;">
-        <span style="color:#ffffff;">✍️ Firmar documento</span>
+        <span style="color:#ffffff;">📋 Revisar Propuesta Comercial</span>
       </a>
       <!--<![endif]-->
     </div>
@@ -224,10 +230,11 @@ export async function sendSignatureRequest({
   senderNote, senderName, senderEmail, expireDays,
   senderAccountId, senderUserId,   // ← NUEVO: para enviar desde Gmail del vendedor
   attachments,                     // [{ filename, content: Buffer, mimeType }] — opcional
+  previewImageUrl,                 // URL de la miniatura del documento — opcional
 }) {
   const portalUrl = buildPortalUrl(signatureId, signUrl);
-  const subject   = `✍️ Documento para firma: ${documentName}`;
-  const html      = signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, senderName, expireDays });
+  const subject   = `📋 Propuesta comercial: ${documentName}`;
+  const html      = signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, senderName, expireDays, previewImageUrl });
 
   // ── 1. Intentar enviar desde Gmail del vendedor si está conectado ──
   if (senderAccountId && senderUserId) {

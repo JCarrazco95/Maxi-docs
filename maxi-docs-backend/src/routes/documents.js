@@ -1,13 +1,25 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db/connection.js';
-import { fillTemplate, applyVariables, generatePdf, wrapDocumentHtml, processPricingTableNodes } from '../services/pdfService.js';
+import { fillTemplate, applyVariables, generatePdf, generateThumbnail, wrapDocumentHtml, processPricingTableNodes } from '../services/pdfService.js';
 import { uploadPdf, buildPdfKey, uploadFile, buildAttachmentKey, deleteFile } from '../services/storageService.js';
 import { buildPricingTableHtml } from '../services/catalogService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { logEvent, hashPdfFile } from '../services/auditService.js';
 
 const router = Router();
+
+// Genera la miniatura (preview del correo) en background — no bloquea la
+// respuesta de generar/regenerar. Mismo patrón que scheduleThumbnail en
+// templates.js, con prefijo 'doc' para no chocar con las de plantillas.
+async function scheduleDocumentThumbnail(documentId, fullHtml) {
+  try {
+    const url = await generateThumbnail(fullHtml, documentId, 'doc');
+    await query(`UPDATE documents SET thumbnail_url = $1 WHERE id = $2`, [url, documentId]);
+  } catch (e) {
+    console.warn('[Thumbnail] Error generando thumbnail de documento:', e.message);
+  }
+}
 
 // Board principal: Oportunidades Maxirent (maxirent-cast.monday.com)
 const MONDAY_COTIZACIONES_BOARD = '8311006777';
@@ -519,6 +531,9 @@ router.post('/generate', requireEditor, async (req, res) => {
   const pdfKey = buildPdfKey(documentId);
   const pdfUrl = await uploadPdf(pdfKey, pdfBuffer);
 
+  // Miniatura para el preview del correo — en background, no bloquea la respuesta
+  scheduleDocumentThumbnail(documentId, fullHtml);
+
   // 5. Generar folio único: MR-{AÑO}-{NNNN}
   const seqRow = await query(`SELECT nextval('doc_number_seq') AS n`);
   const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
@@ -597,6 +612,9 @@ router.put('/:id/regenerate', requireEditor, async (req, res) => {
   const filledHtml = fillTemplate(rawHtml, filled_data);    // expande tablas para PDF
   const fullHtml   = wrapDocumentHtml(filledHtml, doc.name);
   const pdfBuffer  = await generatePdf(fullHtml);
+
+  // Miniatura para el preview del correo — en background, no bloquea la respuesta
+  scheduleDocumentThumbnail(doc.id, fullHtml);
 
   const updated = await query(
     `UPDATE documents
