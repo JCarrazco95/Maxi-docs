@@ -18,8 +18,6 @@ import {
 import MondayVariablesPanel from './components/MondayVariablesPanel.jsx'
 import DesignPanel, { buildDesignCss } from './components/DesignPanel.jsx'
 import RecipientsPanel from './components/RecipientsPanel.jsx'
-import PdfSignatureEditor from './components/PdfSignatureEditor.jsx'
-import { FIELD_COLORS, FIELD_LABELS } from './components/SignatureFieldExtension.jsx'
 import { BLOCK_GROUPS } from './components/BlocksSidebar.jsx'
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -302,10 +300,7 @@ export default function EditorPage() {
   const [signers,    setSigners]    = useState([{ name: '', email: '', autoFilled: false }])
   const [sequential, setSequential] = useState(true)
 
-  // Editor de firma
-  const [signingMode,    setSigningMode]    = useState(false)
   const [generatedDocId, setGeneratedDocId] = useState(null)
-  const [generatedPdfUrl,setGeneratedPdfUrl]= useState(null)
   const [sendingSign,    setSendingSign]    = useState(false)
   const [signError,      setSignError]      = useState(null)
 
@@ -558,22 +553,12 @@ export default function EditorPage() {
     editorRef.current?.replaceVariable(varName, value)
   }
 
-  // ── Enviar a firma ────────────────────────────────────────────
+  // ── Enviar propuesta (sin firma — solo revisión) ───────────────
   async function handleSendForSign() {
     const validSigners = signers.filter(s => s.name.trim() && s.email.trim())
     if (validSigners.length === 0) {
       setSignError('Agrega al menos un destinatario con nombre y email')
       setActivePanel('recipients')
-      return
-    }
-
-    // Intentar extraer campos inline del editor
-    const inlineFields = editorRef.current?.getFieldPositions?.() ?? []
-    const hasInlineFields = inlineFields.length > 0
-
-    // Si ya generamos PDF y no hay campos inline, abrir overlay manual
-    if (generatedDocId && generatedPdfUrl && !hasInlineFields) {
-      setSigningMode(true)
       return
     }
 
@@ -605,23 +590,16 @@ export default function EditorPage() {
           })
 
       setGeneratedDocId(res.data.id)
-      setGeneratedPdfUrl(res.data.pdf_url)
       setGenerating(false)
 
-      if (hasInlineFields) {
-        // Flujo directo: campos ya posicionados inline → enviar sin overlay
-        await sendWithFields(res.data.id, validSigners, inlineFields)
-      } else {
-        // Flujo manual: abrir overlay de posicionamiento
-        setSigningMode(true)
-      }
+      await sendWithFields(res.data.id, validSigners)
     } catch (e) {
       setSignError(e.response?.data?.error || 'Error al generar el PDF')
       setGenerating(false)
     }
   }
 
-  async function sendWithFields(docId, validSigners, fields) {
+  async function sendWithFields(docId, validSigners) {
     setSendingSign(true); setSignError(null)
     try {
       await api.post('/api/signatures/send', {
@@ -630,7 +608,7 @@ export default function EditorPage() {
           name: s.name.trim(), email: s.email.trim(),
           order: sequential ? i + 1 : 1,
         })),
-        field_config: fields.length > 0 ? fields : null,
+        field_config: null,
       })
       setSendingSign(false)
       setSaved(true)
@@ -639,37 +617,8 @@ export default function EditorPage() {
       }
       setTimeout(() => window.close(), 2500)
     } catch (e) {
-      setSignError(e.response?.data?.error || 'Error al enviar a firma')
+      setSignError(e.response?.data?.error || 'Error al enviar la propuesta')
       setSendingSign(false)
-    }
-  }
-
-  async function handleFieldsConfirmed(perSignerFields) {
-    setSendingSign(true); setSignError(null)
-    try {
-      const validSigners = signers.filter(s => s.name.trim() && s.email.trim())
-      const flatFields = perSignerFields.flatMap((fields, idx) =>
-        fields.map(f => ({ ...f, signerIndex: idx }))
-      )
-      await api.post('/api/signatures/send', {
-        document_id: generatedDocId,
-        signers: validSigners.map((s, i) => ({
-          name: s.name.trim(), email: s.email.trim(),
-          order: sequential ? i + 1 : 1,
-        })),
-        field_config: flatFields.length > 0 ? flatFields : null,
-      })
-      setSigningMode(false)
-      setSendingSign(false)
-      setSaved(true)
-      if (window.opener && !window.opener.closed) {
-        try { window.opener.dispatchEvent(new CustomEvent('mxd-doc-generated', { detail: { id: generatedDocId } })) } catch {}
-      }
-      setTimeout(() => window.close(), 2500)
-    } catch (e) {
-      setSignError(e.response?.data?.error || 'Error al enviar a firma')
-      setSendingSign(false)
-      setSigningMode(false)
     }
   }
 
@@ -702,7 +651,6 @@ export default function EditorPage() {
           })
 
       setGeneratedDocId(res.data.id)
-      setGeneratedPdfUrl(res.data.pdf_url)
       try { window.opener?.dispatchEvent(new CustomEvent('mxd-doc-generated', { detail: res.data })) } catch {}
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
@@ -737,8 +685,8 @@ export default function EditorPage() {
   if (saved) return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f6f7fb', gap: 16 }}>
       <div style={{ fontSize: 60 }}>✅</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: '#323338' }}>¡Enviado a firma!</div>
-      <div style={{ fontSize: 14, color: '#676879' }}>El cliente recibirá un email para firmar.</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: '#323338' }}>¡Propuesta enviada!</div>
+      <div style={{ fontSize: 14, color: '#676879' }}>El cliente recibirá un email para revisarla.</div>
       <button onClick={() => window.close()} style={{ marginTop: 8, padding: '10px 28px', background: '#1B3055', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
         ✕ Cerrar pestaña
       </button>
@@ -820,7 +768,7 @@ export default function EditorPage() {
             : <><IcoPdf /> Guardar PDF</>}
         </button>
 
-        {/* Enviar a firma */}
+        {/* Enviar propuesta */}
         <button onClick={handleSendForSign} disabled={generating || sendingSign} style={{
           display: 'flex', alignItems: 'center', gap: 6,
           background: (generating || sendingSign) ? '#4a6fa0' : '#00c875',
@@ -828,7 +776,7 @@ export default function EditorPage() {
           fontSize: 13, fontWeight: 700, padding: '8px 16px',
           cursor: (generating || sendingSign) ? 'not-allowed' : 'pointer', flexShrink: 0,
         }}>
-          {sendingSign ? <><Spinner /> Enviando…</> : <>✍️ Enviar a firma</>}
+          {sendingSign ? <><Spinner /> Enviando…</> : <>📤 Enviar propuesta</>}
         </button>
 
         {/* Toggle modo edición / generación */}
@@ -899,7 +847,6 @@ export default function EditorPage() {
               {activePanel === 'content' && (
                 <ContentPanel
                   editorRef={editorRef}
-                  signers={signers}
                   onClose={() => setActivePanel(null)}
                 />
               )}
@@ -1008,16 +955,6 @@ export default function EditorPage() {
         </DragOverlay>
       </DndContext>
 
-      {/* PdfSignatureEditor overlay */}
-      {signingMode && generatedPdfUrl && (
-        <PdfSignatureEditor
-          pdfUrl={generatedPdfUrl}
-          signers={signers.filter(s => s.name.trim() && s.email.trim()).map(s => ({ name: s.name.trim(), email: s.email.trim() }))}
-          onConfirm={handleFieldsConfirmed}
-          onCancel={() => setSigningMode(false)}
-        />
-      )}
-
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         * { box-sizing: border-box; }
@@ -1074,12 +1011,8 @@ function Spinner() {
   return <span style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
 }
 
-// ── Panel Contenido — bloques + campos de firma ───────────────
-const SIGNER_COLORS = ['#0073ea', '#00c875', '#e2445c', '#ff642e', '#784bd1']
-
-function ContentPanel({ editorRef, signers, onClose }) {
-  const validSigners = signers.filter(s => s.name.trim() || s.email.trim())
-  const [activeSignerIdx, setActiveSignerIdx] = useState(0)
+// ── Panel Contenido — bloques ──────────────────────────────────
+function ContentPanel({ editorRef, onClose }) {
   const [search, setSearch] = useState('')
 
   function insertBlock(item) {
@@ -1093,16 +1026,6 @@ function ContentPanel({ editorRef, signers, onClose }) {
     } else if (item.html) {
       editor.chain().focus().insertContent(item.html).run()
     }
-  }
-
-  function insertField(fieldType) {
-    const signer = validSigners[activeSignerIdx]
-    editorRef?.current?.insertSignatureField?.({
-      fieldType,
-      signerIndex: activeSignerIdx,
-      signerName: signer ? (signer.name || signer.email) : '',
-      signerColor: SIGNER_COLORS[activeSignerIdx % SIGNER_COLORS.length],
-    })
   }
 
   const q = search.trim().toLowerCase()
@@ -1120,55 +1043,6 @@ function ContentPanel({ editorRef, signers, onClose }) {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {/* ── Sección campos de firma ── */}
-        <div style={{ padding: '10px 12px 6px', borderBottom: '1px solid #f0f1f5' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#9699a6', letterSpacing: 0.6, marginBottom: 8 }}>
-            CAMPOS RELLENABLES
-          </div>
-
-          {/* Selector de firmante */}
-          {validSigners.length > 0 ? (
-            <div style={{ marginBottom: 8 }}>
-              <select
-                value={activeSignerIdx}
-                onChange={e => setActiveSignerIdx(Number(e.target.value))}
-                style={{ width: '100%', fontSize: 11, padding: '4px 8px', border: '1px solid #e0e2ea', borderRadius: 6, background: 'white', color: '#323338' }}
-              >
-                {validSigners.map((s, i) => (
-                  <option key={i} value={i}>
-                    ● {s.name || s.email || `Firmante ${i + 1}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, padding: '4px 0' }}>
-              Agrega destinatarios en el panel 👥 para asignar campos.
-            </div>
-          )}
-
-          {/* Botones de campos */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {Object.entries(FIELD_LABELS).map(([type, label]) => {
-              const c = FIELD_COLORS[type]
-              return (
-                <button
-                  key={type}
-                  onClick={() => insertField(type)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '6px 8px', border: `1.5px dashed ${c.border}`,
-                    borderRadius: 6, background: c.bg, color: c.text,
-                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                  }}
-                >
-                  <span>{c.icon}</span> {label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
         {/* ── Sección bloques ── */}
         <div style={{ padding: '10px 12px 6px' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#9699a6', letterSpacing: 0.6, marginBottom: 8 }}>

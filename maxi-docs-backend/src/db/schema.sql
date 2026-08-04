@@ -326,6 +326,7 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS pdf_hash          VARCHAR(64);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS approval_status   VARCHAR(50);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS workspace_id      UUID REFERENCES workspaces(id) ON DELETE SET NULL;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS monday_user_id    VARCHAR(100);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS thumbnail_url     TEXT;  -- PNG de la primera página, para el preview en el correo
 
 ALTER TABLE templates ADD COLUMN IF NOT EXISTS workspace_id      UUID REFERENCES workspaces(id) ON DELETE SET NULL;
 ALTER TABLE templates ADD COLUMN IF NOT EXISTS thumbnail_url    TEXT;  -- PNG de la primera página

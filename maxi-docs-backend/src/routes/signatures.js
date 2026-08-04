@@ -280,6 +280,7 @@ router.post('/send', requireEditor, async (req, res) => {
         senderAccountId: accountId,
         senderUserId:    document.monday_user_id || userId,
         attachments:  emailAttachments,
+        previewImageUrl: document.thumbnail_url || null,
       }).catch(err => console.error('[Email] Error:', err.message));
     }
   }
@@ -388,7 +389,8 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
 
   const sigRes = await query(
     `SELECT s.*, d.pdf_url, d.pdf_content, d.name AS document_name, d.id AS document_id,
-            d.monday_account_id, d.monday_user_id, d.owner_email, d.owner_name, s.signing_order
+            d.monday_account_id, d.monday_user_id, d.owner_email, d.owner_name, d.thumbnail_url,
+            s.signing_order
      FROM signatures s JOIN documents d ON d.id = s.document_id
      WHERE s.id = $1`,
     [signatureId]
@@ -508,6 +510,7 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
       senderAccountId: sig.monday_account_id,
       senderUserId:    sig.monday_user_id,
       attachments:  nextEmailAttachments,
+      previewImageUrl: sig.thumbnail_url || null,
     }).catch(err => console.error('[Email] Error next signer:', err.message));
 
     logEvent({
