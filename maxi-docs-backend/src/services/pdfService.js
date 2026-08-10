@@ -302,7 +302,12 @@ export async function generateThumbnail(html, templateId, prefix = 'tpl') {
     const filename = `${prefix}_${templateId}.png`;
     writeFileSync(pathJoin(dir, filename), buffer);
 
-    const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
+    // OJO: PUBLIC_URL en este proyecto es la URL del FRONTEND (se usa así en
+    // signatures.js/auth.js/embed.js/integrations.js para los links de
+    // /sign/:id) — no la del backend. /uploads es una ruta estática de ESTE
+    // servidor, así que necesita BACKEND_URL (la misma que usa el callback
+    // de OAuth de Gmail en gmailService.js), no PUBLIC_URL.
+    const base = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
     return `${base}/uploads/thumbnails/${filename}`;
   } finally {
     await browser.close();
