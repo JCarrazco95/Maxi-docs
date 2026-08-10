@@ -72,7 +72,10 @@ async function crearOportunidadEnMonday({ document, userId, signerEmail }) {
     const filled  = typeof document.filled_data === 'string'
       ? JSON.parse(document.filled_data) : (document.filled_data ?? {});
     const cliente = filled.name || filled.nombre || filled.razon_social || document.name || '';
-    const empresa = filled.razon_social || filled.nombre || '';
+    // Solo el campo real de razón social — sin fallback a nombre de persona,
+    // para no duplicar lo que ya va en "Oportunidad" (puede venir "NA" para
+    // personas físicas sin empresa, y eso está bien).
+    const empresa = filled.razon_social || '';
     const today   = new Date().toISOString().split('T')[0];
     // Solo el nombre del lead, sin sufijo
     const itemName = cliente || document.doc_number || 'Nueva cotización';
