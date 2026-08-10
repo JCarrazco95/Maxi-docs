@@ -159,7 +159,7 @@ function extractQuoteValues(html) {
   return values;
 }
 
-async function createMondayDocItem({ docNumber, docName, clientName, clientEmail, mondayLeadId, totalAmount, html, mondayUserId }) {
+async function createMondayDocItem({ docNumber, docName, clientName, companyName, clientEmail, mondayLeadId, totalAmount, html, mondayUserId }) {
   const token = process.env.MONDAY_API_TOKEN;
   console.log(`[Monday] createMondayDocItem iniciando — token: ${token ? '✅ presente' : '❌ AUSENTE'} | userId: ${mondayUserId}`);
   if (!token) return null;
@@ -187,7 +187,7 @@ async function createMondayDocItem({ docNumber, docName, clientName, clientEmail
     }
 
     const colValues = {
-      [COL_RAZON_SOCIAL]:       client,
+      [COL_RAZON_SOCIAL]:       companyName ?? '',
       [COL_RENTA_MENSUAL]:      String(Math.round(quoteValues?.rentaMensual ?? 0)),
       [COL_VALOR_COT]:          String(quoteValues?.totalSinIVA ?? 0),
       [COL_ENTREGA_RECOLECCION]:String(Math.round(quoteValues?.entregaRecoleccion ?? 0)),
@@ -539,15 +539,18 @@ router.post('/generate', requireEditor, async (req, res) => {
   const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
 
   // 6. Crear item en Monday con columnas rellenas — no bloquea si falla
-  // Para el item de Monday: nombre del lead + correo de contacto + relación al lead.
-  // Priorizamos 'name' y 'nombre' (nombre del lead) sobre 'razon_social' que
-  // puede venir como "NA" cuando el lead es una persona física sin empresa.
+  // Para el item de Monday: nombre del lead (columna "Oportunidad") + razón
+  // social real (columna "Razón social", puede venir "NA" si es persona
+  // física sin empresa — eso está bien, es distinto de duplicar el nombre)
+  // + correo de contacto + relación al lead.
   const clientName  = filled_data?.name || filled_data?.nombre || filled_data?.razon_social || '';
+  const companyName = filled_data?.razon_social || '';
   const clientEmail = filled_data?.correo_electronico || filled_data?.email || '';
   const mondayDocItemId = await createMondayDocItem({
     docNumber,
     docName:      name,
     clientName,
+    companyName,
     clientEmail,
     mondayLeadId: monday_item_id,   // Pulse ID del lead original → para la board_relation
     // storedHtml conserva las <pricing-table> intactas (con data-items-b64);
