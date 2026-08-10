@@ -113,9 +113,9 @@ function signatureRequestTemplate({
 <div style="max-width:560px;margin:32px auto;background:white;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
 
   <!-- Header -->
-  <div style="background:${BRAND_NAVY};padding:26px 32px;">
-    <div style="color:white;font-size:20px;font-weight:800;letter-spacing:-0.3px;">MAXI<span style="font-weight:400;">Rent</span></div>
-    <div style="color:#ffffff;font-size:13px;font-weight:400;opacity:0.85;margin-top:1px;">Empresas</div>
+  <div style="background:#ffffff;padding:24px 32px 20px;">
+    <img src="https://analy-sys.pro/wp-content/uploads/2026/08/MAXIRent-Renta-Empresarial-01.png"
+         alt="MAXIRent Renta Empresarial" width="180" style="display:block;width:180px;max-width:180px;height:auto;">
   </div>
   <div style="height:4px;background:${BRAND_ORANGE};"></div>
 
