@@ -102,7 +102,7 @@ function extractPricingTotal(html) {
  * Devuelve un objeto con datos que se pueden mapear a columnas de Monday.
  * Ejemplo de uso: quoteValues.subtotalTarifas → columna "Valor renta mensual"
  */
-function extractQuoteValues(html) {
+export function extractQuoteValues(html) {
   if (!html) return null;
   const values = {
     rentaMensual:       0,   // Suma de renta mensual sola (dailyRate * 30 * qty, sin entrega/recolección)
@@ -270,6 +270,29 @@ async function uploadPdfToMondayItem(itemId, pdfBuffer, docNumber) {
     console.log(`[Monday] PDF subido al item ${itemId}`);
   } catch (e) {
     console.warn('[Monday] No se pudo subir PDF:', e.message);
+  }
+}
+
+// Columna "Duración del Proyecto" en el board Leads Maxirent — se usa como
+// "Plazo" en el correo de revisión. No hace falta el board_id, solo el item.
+const COL_DURACION_PROYECTO = 'texto_mkmftfw4';
+
+async function fetchLeadColumnText(itemId, columnId) {
+  const token = process.env.MONDAY_API_TOKEN;
+  if (!token || !itemId) return null;
+  try {
+    const q = `{ items(ids: [${itemId}]) { column_values(ids: ["${columnId}"]) { text } } }`;
+    const res = await fetch('https://api.monday.com/v2', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: token },
+      body:    JSON.stringify({ query: q }),
+    });
+    const data = await res.json();
+    if (data.errors?.length) throw new Error(data.errors[0].message);
+    return data?.data?.items?.[0]?.column_values?.[0]?.text || null;
+  } catch (e) {
+    console.warn('[Monday] No se pudo leer columna del lead:', e.message);
+    return null;
   }
 }
 
@@ -493,6 +516,14 @@ router.post('/generate', requireEditor, async (req, res) => {
   }
   if (!template_id && !content_html) {
     return res.status(400).json({ error: 'Se requiere template_id o content_html' });
+  }
+
+  // "Plazo" para el correo de revisión — viene de la columna "Duración del
+  // Proyecto" del lead en Monday (board Leads Maxirent), no de un campo que
+  // llene el vendedor. No bloquea la generación si falla.
+  if (monday_item_id && !filled_data.plazo) {
+    const plazo = await fetchLeadColumnText(monday_item_id, COL_DURACION_PROYECTO);
+    if (plazo) filled_data.plazo = plazo;
   }
 
   // storedHtml = HTML para guardar en DB (variables reemplazadas, <pricing-table> intactos → re-editable)

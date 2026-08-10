@@ -78,9 +78,29 @@ async function send({ to, subject, html, from: fromOverride, replyTo, attachment
 
 // ── Templates ─────────────────────────────────────────────────
 
-function signatureRequestTemplate({ signerName, documentName, signUrl, senderNote, senderName, expireDays, previewImageUrl }) {
-  const expiryText = expireDays ? `Este enlace expira en ${expireDays} días.` : '';
-  const from = senderName ? `${senderName} — MAXIRent Renta Empresarial` : 'MAXIRent Renta Empresarial';
+// Paleta de marca MAXIRent Empresas
+const BRAND_ORANGE = '#CC6227';
+const BRAND_NAVY    = '#1A394C';
+
+function firstNameOf(fullName) {
+  return (fullName || '').trim().split(/\s+/)[0] || fullName || '';
+}
+
+function formatUnidades(unidades) {
+  if (!unidades || !unidades.length) return '—';
+  if (unidades.length <= 3) return unidades.join(', ');
+  return `${unidades.slice(0, 3).join(', ')} y ${unidades.length - 3} más`;
+}
+
+function signatureRequestTemplate({
+  signerName, documentName, signUrl, senderNote, senderName, senderEmail, expireDays,
+  previewImageUrl, unidades, plazo,
+}) {
+  const expiryText  = expireDays ? `Este enlace expira en ${expireDays} días.` : '';
+  const contactEmail = senderEmail || process.env.NOTIFY_EMAIL || extractEmail(FROM);
+  const contactHref   = `mailto:${contactEmail}?subject=${encodeURIComponent('Consulta sobre mi propuesta: ' + documentName)}`;
+  const adjustHref     = `mailto:${contactEmail}?subject=${encodeURIComponent('Solicito ajustes a mi propuesta: ' + documentName)}`;
+
   return `
 <!DOCTYPE html>
 <html lang="es">
@@ -89,81 +109,118 @@ function signatureRequestTemplate({ signerName, documentName, signUrl, senderNot
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Propuesta comercial</title>
 </head>
-<body style="margin:0;padding:0;background:#f6f7fb;font-family:Arial,Helvetica,sans-serif;">
+<body style="margin:0;padding:0;background:#f2f4f5;font-family:Arial,Helvetica,sans-serif;">
 <div style="max-width:560px;margin:32px auto;background:white;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
 
   <!-- Header -->
-  <div style="background:#1B3055;padding:28px 32px;display:flex;align-items:center;gap:12px;">
-    <div style="background:linear-gradient(135deg,#0073ea,#0060c0);width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;">
-      <span style="color:white;font-size:18px;font-weight:900;line-height:1;">M</span>
-    </div>
-    <div>
-      <div style="color:white;font-size:18px;font-weight:700;letter-spacing:-0.3px;">Maxi<span style="color:#60a5fa;">Docs</span></div>
-      <div style="color:#94a3b8;font-size:11px;margin-top:1px;">Gestión de documentos</div>
-    </div>
+  <div style="background:${BRAND_NAVY};padding:26px 32px;">
+    <div style="color:white;font-size:20px;font-weight:800;letter-spacing:-0.3px;">MAXI<span style="font-weight:400;">Rent</span></div>
+    <div style="color:#ffffff;font-size:13px;font-weight:400;opacity:0.85;margin-top:1px;">Empresas</div>
   </div>
+  <div style="height:4px;background:${BRAND_ORANGE};"></div>
 
   <!-- Body -->
   <div style="padding:32px;">
-    <p style="font-size:16px;font-weight:600;color:#323338;margin:0 0 8px;">Hola, ${signerName} 👋</p>
-    <p style="font-size:14px;color:#676879;line-height:1.6;margin:0 0 24px;">
-      Tienes una propuesta comercial pendiente de revisión:
+    <div style="font-size:11px;font-weight:700;color:${BRAND_ORANGE};text-transform:uppercase;letter-spacing:0.8px;margin:0 0 10px;">
+      Tu propuesta está lista
+    </div>
+    <p style="font-size:20px;font-weight:700;color:${BRAND_NAVY};margin:0 0 10px;">Hola, ${firstNameOf(signerName)} 👋</p>
+    <p style="font-size:14px;color:#5b6b74;line-height:1.6;margin:0 0 24px;">
+      Preparamos una propuesta personalizada de acuerdo con las necesidades de tu empresa.
     </p>
 
     <!-- Doc card -->
-    <div style="background:#f6f7fb;border:1px solid #e0e2ea;border-radius:8px;padding:18px 20px;margin-bottom:24px;">
-      <div style="font-size:12px;color:#9699a6;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Documento</div>
-      <div style="font-size:16px;font-weight:700;color:#323338;">${documentName}</div>
+    <div style="background:#f4f6f7;border:1px solid #e2e8ec;border-radius:10px;padding:20px;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:10px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #e2e8ec;">
+        <span style="font-size:20px;">📄</span>
+        <span style="font-size:15px;font-weight:700;color:${BRAND_NAVY};">${documentName}</span>
+      </div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
+        <tr>
+          <td style="padding:6px 0;color:#5b6b74;">🚚&nbsp; Unidades cotizadas</td>
+          <td style="padding:6px 0;color:${BRAND_NAVY};font-weight:700;text-align:right;">${formatUnidades(unidades)}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#5b6b74;">📅&nbsp; Plazo</td>
+          <td style="padding:6px 0;color:${BRAND_NAVY};font-weight:700;text-align:right;">${plazo || '—'}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;color:#5b6b74;">🧑‍💼&nbsp; Ejecutivo</td>
+          <td style="padding:6px 0;color:${BRAND_NAVY};font-weight:700;text-align:right;">${senderName || 'MAXIRent Empresas'}</td>
+        </tr>
+      </table>
     </div>
 
     ${previewImageUrl ? `
-    <!-- Vista previa del documento -->
-    <div style="margin:0 0 24px;border:1px solid #e0e2ea;border-radius:8px;overflow:hidden;">
+    <!-- Vista previa de la cotización -->
+    <div style="margin:0 0 24px;border:1px solid #e2e8ec;border-radius:10px;overflow:hidden;">
       <img src="${previewImageUrl}" alt="Vista previa de ${documentName}" width="496" style="display:block;width:100%;max-width:496px;height:auto;">
     </div>` : ''}
 
-    <p style="font-size:13px;color:#676879;margin:0 0 16px;">
-      Te envía esta propuesta: <strong style="color:#1B3055;">${from}</strong>
-    </p>
-
     ${senderNote ? `
-    <div style="background:#fff8e6;border-left:3px solid #f5a623;padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:24px;">
-      <p style="margin:0;font-size:13px;color:#676879;font-style:italic;">"${senderNote}"</p>
+    <div style="background:#fbeee8;border-left:3px solid ${BRAND_ORANGE};padding:12px 16px;border-radius:0 6px 6px 0;margin-bottom:24px;">
+      <p style="margin:0;font-size:13px;color:#5b6b74;font-style:italic;">"${senderNote}"</p>
     </div>` : ''}
 
-    <!-- CTA Button (Outlook-friendly: usa color sólido como fallback;
-         gradient se queda como upgrade visual en clients modernos) -->
-    <div style="text-align:center;margin:28px 0;">
+    <!-- CTA Button (Outlook-friendly: VML como fallback) -->
+    <div style="text-align:center;margin:8px 0 12px;">
       <!--[if mso]>
       <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"
-                   href="${signUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="13%" stroke="f" fillcolor="#0073ea">
+                   href="${signUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="13%" stroke="f" fillcolor="${BRAND_ORANGE}">
         <w:anchorlock/>
         <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">
-          Revisar Propuesta Comercial
+          Revisar mi cotización
         </center>
       </v:roundrect>
       <![endif]-->
       <!--[if !mso]><!-- -->
       <a href="${signUrl}"
-         style="display:inline-block;background-color:#0073ea;background-image:linear-gradient(135deg,#0073ea,#0060c0);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:6px;font-size:15px;font-weight:700;letter-spacing:0.2px;mso-padding-alt:0;">
-        <span style="color:#ffffff;">📋 Revisar Propuesta Comercial</span>
+         style="display:block;background-color:${BRAND_ORANGE};color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:6px;font-size:15px;font-weight:700;letter-spacing:0.2px;mso-padding-alt:0;">
+        <span style="color:#ffffff;">👁&nbsp; Revisar mi cotización</span>
       </a>
       <!--<![endif]-->
     </div>
 
-    ${expiryText ? `<p style="text-align:center;font-size:12px;color:#9699a6;margin:0 0 24px;">${expiryText}</p>` : ''}
+    <p style="text-align:center;font-size:12px;color:#8a97a0;margin:0 0 28px;">
+      🛡️&nbsp; Revisarla no implica compromiso ni aceptación.
+    </p>
 
-    <hr style="border:none;border-top:1px solid #e0e2ea;margin:24px 0;">
+    ${expiryText ? `<p style="text-align:center;font-size:12px;color:#9699a6;margin:0 0 20px;">${expiryText}</p>` : ''}
+
+    <!-- Soporte -->
+    <div style="background:#f4f6f7;border-radius:10px;padding:18px 20px;">
+      <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;">
+        <span style="font-size:18px;">🎧</span>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:${BRAND_NAVY};margin-bottom:2px;">¿Necesitas algún ajuste?</div>
+          <div style="font-size:13px;color:#5b6b74;">Tu ejecutivo puede ayudarte a modificar unidades, plazo o servicios.</div>
+        </div>
+      </div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="padding-right:6px;width:50%;">
+          <a href="${contactHref}" style="display:block;text-align:center;border:1px solid #c7d0d6;color:${BRAND_NAVY};text-decoration:none;padding:10px 8px;border-radius:6px;font-size:12.5px;font-weight:700;">
+            👤&nbsp; Contactar a mi ejecutivo
+          </a>
+        </td>
+        <td style="padding-left:6px;width:50%;">
+          <a href="${adjustHref}" style="display:block;text-align:center;border:1px solid #c7d0d6;color:${BRAND_NAVY};text-decoration:none;padding:10px 8px;border-radius:6px;font-size:12.5px;font-weight:700;">
+            ⚙️&nbsp; Solicitar ajustes
+          </a>
+        </td>
+      </tr></table>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #e2e8ec;margin:24px 0 16px;">
     <p style="font-size:12px;color:#9699a6;line-height:1.6;margin:0;">
       Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
-      <a href="${signUrl}" style="color:#0073ea;word-break:break-all;">${signUrl}</a>
+      <a href="${signUrl}" style="color:${BRAND_ORANGE};word-break:break-all;">${signUrl}</a>
     </p>
   </div>
 
   <!-- Footer -->
-  <div style="background:#f6f7fb;padding:16px 32px;border-top:1px solid #e0e2ea;text-align:center;">
-    <p style="margin:0;font-size:11px;color:#9699a6;">
-      Enviado via MaxiDocs · Powered by MAXIRent Renta Empresarial
+  <div style="background:#f4f6f7;padding:16px 32px;border-top:1px solid #e2e8ec;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#8a97a0;">
+      🏢&nbsp; MAXIRent · Soluciones de movilidad para empresas
     </p>
   </div>
 </div>
@@ -231,10 +288,15 @@ export async function sendSignatureRequest({
   senderAccountId, senderUserId,   // ← NUEVO: para enviar desde Gmail del vendedor
   attachments,                     // [{ filename, content: Buffer, mimeType }] — opcional
   previewImageUrl,                 // URL de la miniatura del documento — opcional
+  unidades,                        // string[] — nombres de las unidades cotizadas
+  plazo,                           // string — "Duración del Proyecto" del lead en Monday
 }) {
   const portalUrl = buildPortalUrl(signatureId, signUrl);
   const subject   = `📋 Propuesta comercial: ${documentName}`;
-  const html      = signatureRequestTemplate({ signerName, documentName, signUrl: portalUrl, senderNote, senderName, expireDays, previewImageUrl });
+  const html      = signatureRequestTemplate({
+    signerName, documentName, signUrl: portalUrl, senderNote, senderName, senderEmail,
+    expireDays, previewImageUrl, unidades, plazo,
+  });
 
   // ── 1. Intentar enviar desde Gmail del vendedor si está conectado ──
   if (senderAccountId && senderUserId) {

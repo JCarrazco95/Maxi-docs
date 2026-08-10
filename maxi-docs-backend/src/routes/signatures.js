@@ -5,8 +5,25 @@ import { embedSignaturesInPdf, saveSignedPdfLocal } from '../services/selfSignSe
 import { logEvent, hashPdfFile, hashBuffer } from '../services/auditService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { downloadFile } from '../services/storageService.js';
+import { extractQuoteValues } from './documents.js';
 
 const router = Router();
+
+// Extrae "unidades cotizadas" y "plazo" para el correo de revisión, a partir
+// del documento. Nunca lanza — si algo falla, el correo sale sin esos datos.
+function extractEmailDisplayData(document) {
+  let unidades = [];
+  try {
+    unidades = extractQuoteValues(document.content_html)?.unidades ?? [];
+  } catch { /* ignorar */ }
+  let plazo = null;
+  try {
+    const filled = typeof document.filled_data === 'string'
+      ? JSON.parse(document.filled_data) : (document.filled_data ?? {});
+    plazo = filled.plazo || null;
+  } catch { /* ignorar */ }
+  return { unidades, plazo };
+}
 
 // Carga los adjuntos de soporte de un documento y descarga su contenido
 // para incluirlos en el correo de solicitud de firma. No bloqueante: un
@@ -236,6 +253,7 @@ router.post('/send', requireEditor, async (req, res) => {
   const insertedSignatures = [];
   const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:8301';
   const emailAttachments = await loadAttachmentsForEmail(document_id).catch(() => []);
+  const { unidades: emailUnidades, plazo: emailPlazo } = extractEmailDisplayData(document);
 
   for (let i = 0; i < signers.length; i++) {
     const signer       = signers[i];
@@ -284,6 +302,8 @@ router.post('/send', requireEditor, async (req, res) => {
         senderUserId:    document.monday_user_id || userId,
         attachments:  emailAttachments,
         previewImageUrl: document.thumbnail_url || null,
+        unidades:     emailUnidades,
+        plazo:        emailPlazo,
       }).catch(err => console.error('[Email] Error:', err.message));
     }
   }
@@ -393,6 +413,7 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
   const sigRes = await query(
     `SELECT s.*, d.pdf_url, d.pdf_content, d.name AS document_name, d.id AS document_id,
             d.monday_account_id, d.monday_user_id, d.owner_email, d.owner_name, d.thumbnail_url,
+            d.content_html, d.filled_data,
             s.signing_order
      FROM signatures s JOIN documents d ON d.id = s.document_id
      WHERE s.id = $1`,
@@ -499,6 +520,7 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
 
     // Enviar email al siguiente firmante (con datos del vendedor del documento original)
     const nextEmailAttachments = await loadAttachmentsForEmail(sig.document_id).catch(() => []);
+    const { unidades: nextUnidades, plazo: nextPlazo } = extractEmailDisplayData(sig);
     sendSignatureRequest({
       signatureId:  next.id,
       signerName:   next.signer_name,
@@ -514,6 +536,8 @@ router.post('/:signatureId/sign', signRateLimit, async (req, res) => {
       senderUserId:    sig.monday_user_id,
       attachments:  nextEmailAttachments,
       previewImageUrl: sig.thumbnail_url || null,
+      unidades:     nextUnidades,
+      plazo:        nextPlazo,
     }).catch(err => console.error('[Email] Error next signer:', err.message));
 
     logEvent({
