@@ -1,0 +1,29 @@
+# Entorno de laboratorio — Postgres LOCAL y aislado.
+# Puerto 5433 a propósito: no choca con un Postgres 5432 que ya tengas instalado,
+# y hace imposible confundirlo con la base de producción de Railway.
+#
+#   docker compose -f docker-compose.lab.yml up -d
+#   docker compose -f docker-compose.lab.yml down          (conserva los datos)
+#   docker compose -f docker-compose.lab.yml down -v       (borra todo y empieza limpio)
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: maxidocs-lab-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     maxidocs
+      POSTGRES_PASSWORD: lab-local-no-secreta
+      POSTGRES_DB:       maxi_docs_lab
+    ports:
+      - "5433:5432"
+    volumes:
+      - lab_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maxidocs -d maxi_docs_lab"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  lab_pgdata:
