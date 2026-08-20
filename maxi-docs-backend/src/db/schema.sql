@@ -319,9 +319,11 @@ CREATE INDEX IF NOT EXISTS idx_embed_tokens_expires ON embed_tokens(expires_at);
 -- =================================================================
 -- Columnas adicionales en tablas existentes (re-ejecución segura)
 -- =================================================================
+-- OJO: aquí solo van ALTERs de tablas creadas MÁS ARRIBA en este archivo.
+-- Los de catalog_* están al final, después de sus CREATE TABLE — ponerlos aquí
+-- rompía la migración entera en una base nueva (todo el archivo corre en una
+-- sola transacción implícita, así que un error aborta hasta lo que ya pasó).
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_number        VARCHAR(50);
-ALTER TABLE catalog_categories ADD COLUMN IF NOT EXISTS monday_group_id TEXT;
-ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS monday_item_id  TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS pdf_hash          VARCHAR(64);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS approval_status   VARCHAR(50);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS workspace_id      UUID REFERENCES workspaces(id) ON DELETE SET NULL;
@@ -346,9 +348,14 @@ CREATE TABLE IF NOT EXISTS catalog_categories (
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_cat_cat_account ON catalog_categories(monday_account_id);
+
+-- Constraint idempotente. El EXCEPTION anterior atrapaba `duplicate_table`, pero
+-- Postgres levanta `duplicate_object` (42710) cuando el constraint ya existe, así
+-- que la segunda ejecución de migrate reventaba aquí. Mismo patrón que server.js.
 DO $$ BEGIN
-  ALTER TABLE catalog_categories ADD CONSTRAINT uq_cat_account_name UNIQUE (monday_account_id, name);
-EXCEPTION WHEN duplicate_table THEN NULL;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_cat_account_name') THEN
+    ALTER TABLE catalog_categories ADD CONSTRAINT uq_cat_account_name UNIQUE (monday_account_id, name);
+  END IF;
 END; $$;
 
 -- =================================================================
@@ -374,3 +381,27 @@ CREATE INDEX IF NOT EXISTS idx_cat_prod_category ON catalog_products(category_id
 CREATE OR REPLACE TRIGGER set_catalog_products_updated_at
   BEFORE UPDATE ON catalog_products
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Columnas extra del catálogo — aquí abajo porque dependen de los CREATE TABLE
+-- de arriba. Las mismas que server.js:ensureColumns() intenta crear al arrancar.
+ALTER TABLE catalog_categories ADD COLUMN IF NOT EXISTS monday_group_id TEXT;
+ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS monday_item_id  TEXT;
+ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS sort_order      INTEGER DEFAULT 0;
+ALTER TABLE catalog_products   ADD COLUMN IF NOT EXISTS active          BOOLEAN DEFAULT true;
+
+-- =================================================================
+-- DOCUMENT_SUMMARIES — Resúmenes generados con Claude
+-- Faltaba en el schema: /api/ai/summarize la lee y la escribe, así que
+-- ese endpoint respondía 500 siempre.
+-- =================================================================
+CREATE TABLE IF NOT EXISTS document_summaries (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  summary     TEXT NOT NULL DEFAULT '',
+  key_points  JSONB DEFAULT '[]',
+  model       VARCHAR(100),
+  tokens_used INTEGER DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_doc_summaries_document ON document_summaries(document_id, created_at DESC);

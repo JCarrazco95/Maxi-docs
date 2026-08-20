@@ -29,46 +29,106 @@ que **escribir a mano** una credencial de producción — no puede pasar por acc
 
 ---
 
+## Estado: ✅ funcionando
+
+Verificado de punta a punta el 20/08/2026 en esta máquina:
+20 tablas creadas, backend en el 3001, frontend en el 8301, y un PDF real de
+2 páginas generado con folio `MR-2026-0001`.
+
+---
+
 ## Arranque desde cero
 
-```bash
-# 1. Base de datos local
-docker compose -f docker-compose.lab.yml up -d
+### Opción A — Postgres que ya tienes instalado (es lo que se usó aquí)
 
-# 2. Backend
+Esta máquina ya tiene **PostgreSQL 17 corriendo en el puerto 5433**, así que no
+hizo falta Docker. La base del lab se creó ahí:
+
+```bash
+PSQL="/c/Program Files/PostgreSQL/17/bin/psql.exe"
+"$PSQL" -h 127.0.0.1 -p 5433 -U postgres -d postgres \
+  -c "CREATE ROLE maxidocs LOGIN PASSWORD 'lab-local-no-secreta';"
+"$PSQL" -h 127.0.0.1 -p 5433 -U postgres -d postgres \
+  -c "CREATE DATABASE maxi_docs_lab OWNER maxidocs;"
+```
+
+### Opción B — Docker
+
+```bash
+docker compose -f docker-compose.lab.yml up -d
+```
+
+Mismo puerto (5433), mismo usuario y misma base, así que la `DATABASE_URL` del
+`.env.lab.example` sirve para las dos opciones sin cambiarla.
+
+### Backend y frontend
+
+```bash
+# Backend
 cd maxi-docs-backend
 cp .env.lab.example .env
-# genera tus secretos:
-node -e "console.log('JWT_SECRET=' + require('crypto').randomBytes(32).toString('hex'))"
-npm install
-npm run migrate      # OJO: hoy falla en BD nueva — ver docs/01-BUGS #10
+node -e "const c=require('crypto');console.log('JWT_SECRET='+c.randomBytes(32).toString('hex'))"
+# pega ese valor y otro igual para APP_ENCRYPTION_KEY en el .env
+npm install          # ~25 s, descarga Chromium para Puppeteer
+npm run migrate
 npm run dev
 
-# 3. Frontend (otra terminal)
+# Frontend (otra terminal)
 cd panda-monday
 npm install
 npm run dev          # http://localhost:8301
 ```
 
-> ⚠️ **`npm run migrate` no funciona en una base limpia** por el bug #10
-> (`ALTER TABLE catalog_*` antes del `CREATE TABLE`). Es lo primero que hay que
-> arreglar en la rama, y de paso valida que el entorno de lab sirve para algo:
-> ese bug es invisible en producción porque la BD ya existía.
+---
+
+## Cómo comprobar que funciona
+
+```bash
+curl http://localhost:3001/health
+curl http://localhost:3001/api/templates -H "x-monday-account-id: dev" -H "x-monday-user-id: dev"
+```
+
+Y para el flujo completo (genera un PDF de verdad, tarda ~5 s):
+
+```bash
+curl -X POST http://localhost:3001/api/documents/generate \
+  -H "Content-Type: application/json" \
+  -H "x-monday-account-id: dev" -H "x-monday-user-id: dev" \
+  -d '{"template_id":"<id de la plantilla>","name":"Prueba","filled_data":{"razon_social":"Ejemplo SA","name":"Ana Ruiz"}}'
+```
 
 ---
 
-## Sin Docker
+## Lo que se aprendió al levantarlo
 
-Si prefieres no usar Docker, crea una base local aparte:
+**El bug #10 era real y se confirmó con una prueba de control.** El schema de
+`main` sobre una base limpia:
 
-```bash
-createdb maxi_docs_lab
-# y en el .env:
-# DATABASE_URL=postgresql://postgres:TU_PASSWORD@localhost:5432/maxi_docs_lab
+```
+ERROR: no existe la relación «catalog_categories»   (línea 323)
+tablas creadas: 0
 ```
 
-El nombre `maxi_docs_lab` importa: hace obvio en cualquier log y en cualquier
-cliente de BD que no estás en producción.
+El schema corregido, ejecutado dos veces seguidas: `exit 0`, **20 tablas**.
+Ya está arreglado en esta rama (commit siguiente al de la documentación).
+
+**Dos hallazgos más confirmados en vivo, no solo leyendo el código:**
+
+- **#16** — el documento generado quedó con `pdf_hash: null`, tal como se
+  predijo. La cadena de auditoría del PDF original está vacía.
+- **#03** — el PDF se descargó con `curl` **sin un solo header de Monday**.
+  Cualquiera con el UUID lo tiene.
+- **#28** — generar un documento tardó **5,0 segundos**, casi todo arrancando
+  Chrome dos veces (PDF + miniatura).
+
+---
+
+## Nota sobre esta máquina
+
+El `pg_hba.conf` del Postgres local está en modo `trust` para `127.0.0.1`: se
+conecta sin contraseña. Para un entorno de laboratorio está bien y de hecho
+simplifica el arranque, pero conviene saberlo — cualquier proceso en tu equipo
+puede conectarse a esa base.
 
 ---
 
