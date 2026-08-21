@@ -24,17 +24,18 @@ Estado de los 33 hallazgos de [01-BUGS-Y-RIESGOS.md](01-BUGS-Y-RIESGOS.md).
 | 15 | El enlace público de Deal Rooms no funcionaba | `GET /api/rooms/public/<token>` → 200 (antes 500) |
 | 16 | `pdf_hash` siempre `null` | Los eventos nuevos traen hash real |
 | 17 | Se subía a R2 y se tiraba la URL | Intención documentada; R2 se decide en la Fase 4 |
-| 24 | Cero pruebas | 50 pruebas, `npm test`. Verificadas por mutación |
+| 24 | Cero pruebas | 71 pruebas, `npm test`. Verificadas por mutación |
+| **1** | **La autenticación era falsificable** | Ahora se verifica el `sessionToken` de Monday (JWT HS256 firmado con el signing secret). En modo estricto: headers falsificados 401 · token de otro secreto 401 · token caducado 401 · token legítimo 200. Empresa A no ve los documentos de B, ni se baja su PDF (403) |
+| 4 | Cualquiera marcaba un documento como pagado | Ahora exige sesión, que el documento sea de tu cuenta, y un `payment_intent` verificado con Stripe cuyos metadatos apunten a ese documento |
+| 9 | IDOR en `/embed/revoke` | Ya no es pública: cae bajo `requireAuth` |
 
 ## Siguiente
 
 | # | Hallazgo | Nota |
 |---|---|---|
-| **1** | **La autenticación es falsificable** | El grande. Verificar el `sessionToken` de Monday con `MONDAY_SIGNING_SECRET`. Toca backend y frontend, y hay que quitar el `'dev'` por defecto de `extractMondayContext` — hoy una petición sin headers se trata como la cuenta `dev` |
-| 4 | Cualquiera marca un documento como pagado | Requiere auth (#1) para arreglarse bien |
-| 6 | Las API keys ignoran sus scopes | |
-| 8 | El proxy de Monday expone cualquier board | |
-| 9 | IDOR varios | Depende de #1 |
+| 6 | Las API keys ignoran sus scopes | La columna `scopes` se guarda y no se lee |
+| 8 | El proxy de Monday expone cualquier board | Un token global sirve cualquier `boardId` |
+| 9 | IDOR restantes | `GET /signatures/:documentId` y `move-document` sin filtro de cuenta |
 | 18 | `PUBLIC_URL` significa dos cosas | Separar en `FRONTEND_PUBLIC_URL` y `BACKEND_PUBLIC_URL` |
 | 20 | `ensureColumns()` sin `await` | Ahora que el schema funciona, se puede quitar entero |
 | 21 | IVA clavado al 16% | Decidir: respetarlo o quitar el atributo |
@@ -51,13 +52,14 @@ cd maxi-docs-backend && npm test
 ```
 
 ```
-Test Files  3 passed (3)
-     Tests  50 passed (50)
+Test Files  4 passed (4)
+     Tests  71 passed (71)
 ```
 
 - `quoteService.test.js` — la fórmula del dinero, 30 casos
 - `pdfService.test.js` — que lo impreso coincide con lo calculado, 12 casos
 - `documents.quote.test.js` — regresión del #19: Monday contra el PDF, 8 casos
+- `mondayAuth.test.js` — el #1: firma, caducidad, payload manipulado, roles, 21 casos
 
 Verificadas por mutación: reintroduciendo el deducible a propósito caen 8 pruebas
 en los tres archivos.

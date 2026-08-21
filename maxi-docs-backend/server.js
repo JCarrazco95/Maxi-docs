@@ -4,7 +4,7 @@ import { query } from './src/db/connection.js';
 import cors from 'cors';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { extractMondayContext, requireEditor, requireAdmin } from './src/middleware/mondayAuth.js';
+import { extractMondayContext, requireAuth } from './src/middleware/mondayAuth.js';
 import templatesRouter      from './src/routes/templates.js';
 import documentsRouter      from './src/routes/documents.js';
 import signaturesRouter     from './src/routes/signatures.js';
@@ -54,8 +54,40 @@ app.get('/health', (_req, res) => {
 });
 
 
+// ── Rutas públicas ────────────────────────────────────────────────
+// Todo lo demás bajo /api exige una sesión de Monday verificada. Estas rutas no
+// pueden: las abre alguien que no está dentro de Monday (el cliente que revisa
+// su propuesta, Google devolviendo un callback de OAuth), y cada una se protege
+// con su propio secreto — el UUID de la firma, el token de la sala, el state
+// firmado del OAuth.
+//
+// La lista es explícita a propósito: si mañana alguien añade una ruta y olvida
+// pensarlo, queda protegida por omisión en vez de abierta.
+const PUBLIC_API_ROUTES = [
+  { method: 'GET',  pattern: /^\/signatures\/portal\/[^/]+$/ },       // portal del firmante
+  { method: 'POST', pattern: /^\/signatures\/[^/]+\/sign$/ },         // el cliente firma
+  { method: 'POST', pattern: /^\/signatures\/[^/]+\/time-spent$/ },   // analítica de lectura
+  { method: 'GET',  pattern: /^\/rooms\/public\/[^/]+$/ },            // deal room por token
+  { method: 'POST', pattern: /^\/rooms\/[^/]+\/messages$/ },          // mensajes del cliente
+  { method: 'GET',  pattern: /^\/integrations\/gmail\/callback$/ },   // Google → nosotros
+  { method: 'GET',  pattern: /^\/embed\/verify\/[^/]+$/ },            // verificación de token
+  { method: 'GET',  pattern: /^\/documents\/[^/]+\/pdf$/ },           // valida ?sig= por dentro
+  { method: 'GET',  pattern: /^\/integrations\/schema$/ },             // descubrimiento de Zapier
+];
+
+function isPublicApiRoute(req) {
+  return PUBLIC_API_ROUTES.some(r => r.method === req.method && r.pattern.test(req.path));
+}
+
 // ── Rutas de la API ───────────────────────────────────────────────
 app.use('/api', extractMondayContext);
+app.use('/api', (req, res, next) => {
+  if (isPublicApiRoute(req)) return next();
+  // Las rutas de integraciones con API key traen su propia autenticación
+  // (x-api-key) y la resuelven dentro del router.
+  if (req.path.startsWith('/integrations/') && req.headers['x-api-key']) return next();
+  return requireAuth(req, res, next);
+});
 // Templates: crear/editar requiere role editor o superior
 app.use('/api/templates',       templatesRouter);
 app.use('/api/documents',       documentsRouter);

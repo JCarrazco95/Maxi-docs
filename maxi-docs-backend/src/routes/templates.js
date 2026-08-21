@@ -39,8 +39,9 @@ router.get('/:id', async (req, res) => {
   );
   const tpl = result.rows[0];
   if (!tpl) return res.status(404).json({ error: 'Template not found' });
-  // Verificar pertenencia solo para no-admin y cuando no es 'dev'
-  if (!isAdmin && tpl.monday_account_id !== accountId && accountId !== 'dev') {
+  // Verificar pertenencia. Antes había un escape para la cuenta 'dev' que
+  // permitía leer la plantilla de cualquier empresa.
+  if (!isAdmin && tpl.monday_account_id !== accountId) {
     return res.status(403).json({ error: 'Sin permiso para esta plantilla' });
   }
   res.json(tpl);

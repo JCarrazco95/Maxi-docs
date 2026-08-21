@@ -55,14 +55,34 @@ router.post('/create-intent', async (req, res) => {
 
 // POST /api/payments/confirm — webhook de Stripe o confirmación manual
 router.post('/confirm', async (req, res) => {
+  const { accountId } = req.mondayContext;
   const { document_id, payment_intent_id } = req.body;
 
+  if (!document_id) return res.status(400).json({ error: 'document_id es requerido' });
+
+  // El documento tiene que ser de tu cuenta. Antes no se comprobaba: bastaba
+  // conocer un UUID para marcar como pagado el documento de cualquier empresa.
+  const doc = await query(
+    `SELECT id FROM documents WHERE id = $1 AND monday_account_id = $2`,
+    [document_id, accountId]
+  );
+  if (!doc.rows[0]) return res.status(404).json({ error: 'Documento no encontrado' });
+
+  // Y el pago tiene que estar verificado con Stripe. Antes, omitir
+  // payment_intent_id saltaba la comprobación entera y marcaba 'paid' igual.
   const stripe = getStripe();
-  if (stripe && payment_intent_id) {
-    const intent = await stripe.paymentIntents.retrieve(payment_intent_id);
-    if (intent.status !== 'succeeded') {
-      return res.status(400).json({ error: 'El pago no fue completado', status: intent.status });
-    }
+  if (!stripe) {
+    return res.status(503).json({ error: 'Stripe no configurado' });
+  }
+  if (!payment_intent_id) {
+    return res.status(400).json({ error: 'payment_intent_id es requerido' });
+  }
+  const intent = await stripe.paymentIntents.retrieve(payment_intent_id);
+  if (intent.status !== 'succeeded') {
+    return res.status(400).json({ error: 'El pago no fue completado', status: intent.status });
+  }
+  if (intent.metadata?.document_id !== document_id) {
+    return res.status(400).json({ error: 'El pago no corresponde a este documento' });
   }
 
   await query(`UPDATE documents SET status = 'paid' WHERE id = $1`, [document_id]);

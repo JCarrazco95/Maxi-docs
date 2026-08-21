@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import mondaySdk from 'monday-sdk-js'
 import { updateMondayContext } from './api/client.js'
+import { atenderPeticionesDeToken } from './api/sessionToken.js'
 import TemplatesPage   from './pages/TemplatesPage.jsx'
 import DocumentsPage   from './pages/DocumentsPage.jsx'
 import DashboardPage   from './pages/DashboardPage.jsx'
@@ -47,6 +48,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
 
   useEffect(() => {
+    // Esta pestaña vive dentro del iframe de Monday, así que es la única que
+    // puede pedir sessionToken. Queda a la escucha para servírselo a la pestaña
+    // del editor, que se abre fuera del iframe. Ver api/sessionToken.js.
+    atenderPeticionesDeToken()
+
     monday.get('context')
       .then(res => {
         setMondayCtx(res.data)

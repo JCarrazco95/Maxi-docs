@@ -245,7 +245,9 @@ router.post('/send', requireEditor, async (req, res) => {
   );
   const document = docResult.rows[0];
   if (!document) return res.status(404).json({ error: 'Documento no encontrado' });
-  if (!isAdmin && document.monday_account_id !== accountId && accountId !== 'dev') {
+  // El escape `accountId !== 'dev'` era una puerta trasera: quien se
+  // identificara como la cuenta 'dev' se saltaba la comprobación de dueño.
+  if (!isAdmin && document.monday_account_id !== accountId) {
     return res.status(403).json({ error: 'No tienes permiso sobre este documento' });
   }
   if (!document.pdf_url) return res.status(400).json({ error: 'El documento no tiene PDF generado' });

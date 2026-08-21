@@ -13,15 +13,16 @@ documentos tipo PandaDoc.
 | [05 — Entorno lab](05-ENTORNO-LAB.md) | Cómo trabajar sin tocar producción (✅ funcionando) |
 | [06 — Cotizaciones múltiples y versiones](06-COTIZACIONES-MULTIPLES-Y-VERSIONES.md) | Varias cotizaciones por cliente, e historial de quién hizo qué |
 | [07 — ¿Se borra lo que ya tenemos?](07-SE-BORRA-LO-QUE-YA-TENEMOS.md) | No. Cómo se despliega la v3 sin perder un solo documento |
+| [08 — Autenticación](08-AUTENTICACION.md) | El hallazgo #1 resuelto, y qué configurar antes de desplegar |
 | [**PROGRESO**](PROGRESO.md) | **Qué está arreglado y qué sigue** |
 
 ---
 
 ## Los cuatro titulares
 
-1. **La autenticación es falsificable con un `curl`.** Los headers `x-monday-*`
-   se confían sin verificar. Cualquiera lee y modifica datos de cualquier cuenta.
-   → [01 #1](01-BUGS-Y-RIESGOS.md)
+1. ~~**La autenticación es falsificable con un `curl`.**~~ ✅ **Resuelto.** Ahora se
+   verifica el `sessionToken` que Monday firma. Los headers falsificados dan 401.
+   → [08 — Autenticación](08-AUTENTICACION.md)
 
 2. **El documento es un blob de HTML.** De ahí salen las cinco funciones que
    parsean HTML con regex, los dos modos del editor, y la imposibilidad de hacer

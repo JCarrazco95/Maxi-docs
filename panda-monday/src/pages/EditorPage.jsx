@@ -3,7 +3,7 @@
  * Layout: Header mínimo | Documento A4 | Panel lateral derecho + Strip de iconos
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
-import api, { updateMondayContext } from '../api/client.js'
+import api from '../api/client.js'
 import WysiwygEditor from './components/WysiwygEditor.jsx'
 import BlocksSidebar from './components/BlocksSidebar.jsx'
 import {
@@ -56,6 +56,11 @@ function ensureTemplateStyle(templateHtml, editorHtml) {
 }
 
 // ── Abrir editor en pestaña nueva ────────────────────────────
+// La cuenta, el usuario y el flag de admin YA NO viajan en la URL: eran
+// falsificables (bastaba escribir admin=1) y quedaban en el historial del
+// navegador. Ahora la pestaña le pide un sessionToken firmado a la ventana que
+// la abrió — ver api/sessionToken.js. Aquí solo van datos de navegación:
+// qué plantilla o documento abrir y de qué item de Monday viene.
 export function openEditorTab(data) {
   const params = new URLSearchParams()
   if (data.documentId)  params.set('docId',   data.documentId)  // modo edición
@@ -63,9 +68,6 @@ export function openEditorTab(data) {
   if (data.docName)     params.set('name',    encodeURIComponent(data.docName))
   if (data.itemId)      params.set('item',    String(data.itemId))
   if (data.boardId)     params.set('board',   String(data.boardId))
-  if (data.accountId)   params.set('account', String(data.accountId))
-  if (data.userId)      params.set('user',    String(data.userId))
-  if (data.isAdmin)     params.set('admin',   '1')
   if (data.fieldValues && Object.keys(data.fieldValues).length > 0) {
     try {
       params.set('fv', btoa(unescape(encodeURIComponent(JSON.stringify(data.fieldValues)))))
@@ -369,14 +371,12 @@ export default function EditorPage() {
     const nameRaw   = params.get('name')
     const itemId    = params.get('item')
     const boardId   = params.get('board')
-    const accountId = params.get('account')
-    const userId    = params.get('user')
-    const isAdmin   = params.get('admin') === '1'
     const fvRaw     = params.get('fv')
 
-    if (accountId && accountId !== 'null') {
-      updateMondayContext({ accountId, userId: userId || 'user', isAdmin })
-    }
+    // La identidad ya no viene de la URL. El interceptor de api/client.js pide
+    // el sessionToken firmado a la ventana que abrió esta pestaña, y el backend
+    // lo verifica. Si esa ventana se cerró, las llamadas devolverán 401 y hay
+    // que reabrir el editor desde la app.
 
     // ── Modo edición: cargar documento existente ──────────────
     if (docId) {
@@ -385,7 +385,7 @@ export default function EditorPage() {
           const doc = res.data
           const cssMatch = doc.content_html?.match(/<style>([\s\S]*?)<\/style>/i)
           const css = cssMatch?.[1] ?? ''
-          setSession({ documentId: doc.id, templateId: doc.template_id, boardId, itemId, accountId, userId, isAdmin })
+          setSession({ documentId: doc.id, templateId: doc.template_id, boardId, itemId })
           setDocName(doc.name)
           setTplCss(css)
           setEditorHtml(doc.content_html ?? '')
@@ -417,10 +417,6 @@ export default function EditorPage() {
       return
     }
 
-    if (accountId && accountId !== 'null') {
-      updateMondayContext({ accountId, userId: userId || 'user', isAdmin })
-    }
-
     let fieldValues = {}
     if (fvRaw) {
       try { fieldValues = JSON.parse(decodeURIComponent(escape(atob(fvRaw)))) } catch {}
@@ -433,7 +429,7 @@ export default function EditorPage() {
         const cssMatch = tpl.content_html?.match(/<style>([\s\S]*?)<\/style>/i)
         const css = cssMatch?.[1] ?? ''
         const filled = applyVars(tpl.content_html ?? '', fieldValues)
-        setSession({ templateId: tpl.id, templateHtml: tpl.content_html, boardId, itemId, accountId, userId, isAdmin })
+        setSession({ templateId: tpl.id, templateHtml: tpl.content_html, boardId, itemId })
         // Obtener datos del vendedor desde Monday y auto-rellenar variables
         api.get('/api/monday/me').then(r => {
           if (r.data.email) setOwnerEmail(r.data.email)

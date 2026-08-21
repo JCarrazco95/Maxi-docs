@@ -368,12 +368,7 @@ export default function DocumentsPage({ itemId, boardId, accountId, userId, user
                         <button
                           className="btn btn-secondary btn-sm btn-icon"
                           title="Editar documento"
-                          onClick={() => openEditorTab({
-                            documentId: doc.id,
-                            accountId,
-                            userId,
-                            isAdmin,
-                          })}
+                          onClick={() => openEditorTab({ documentId: doc.id })}
                         >
                           <IconEdit2 />
                         </button>

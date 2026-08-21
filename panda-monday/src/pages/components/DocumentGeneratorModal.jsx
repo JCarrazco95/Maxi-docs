@@ -6,7 +6,6 @@ import { useState, useEffect } from 'react'
 import mondaySdk from 'monday-sdk-js'
 import api from '../../api/client.js'
 import { openEditorTab } from '../EditorPage.jsx'
-import { getContext } from '../../api/client.js'
 
 const monday = mondaySdk()
 
@@ -51,16 +50,13 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
     const name = docName.trim() || (itemName ? `${selectedTpl.name} — ${itemName}` : selectedTpl.name)
     setError(null); setOpening(true)
 
-    const { accountId, userId, isAdmin } = getContext()
-
+    // La identidad ya no se pasa: el editor consigue su propio sessionToken
+    // firmado hablando con esta ventana. Ver api/sessionToken.js.
     openEditorTab({
       templateId: selectedTpl.id,
       docName:    name,
       boardId,
       itemId,
-      accountId,
-      userId,
-      isAdmin,
       fieldValues: {},
     })
 
