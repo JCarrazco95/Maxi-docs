@@ -4,6 +4,7 @@ import { query } from '../db/connection.js';
 import { fillTemplate, applyVariables, generatePdf, generateThumbnail, wrapDocumentHtml, processPricingTableNodes } from '../services/pdfService.js';
 import { uploadPdf, buildPdfKey, uploadFile, buildAttachmentKey, deleteFile } from '../services/storageService.js';
 import { buildPricingTableHtml } from '../services/catalogService.js';
+import { quoteFromHtml } from '../services/quoteService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { logEvent, hashPdfFile } from '../services/auditService.js';
 
@@ -41,123 +42,38 @@ const COL_PDF            = 'archivo_mkmghcc4';    // Cotización (file)
 const COL_FOLIO          = 'text_mktmgv5z';       // Folio Pandadoc
 const COL_EMAIL          = 'email';               // Dirección de e-mail principal del contacto
 const COL_LEAD_RELATION  = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent (pulse ID del lead)
+// El cálculo de la cotización vive en services/quoteService.js — una sola
+// fórmula, con pruebas. Antes había tres copias aquí y en pdfService.js que no
+// coincidían: esta aplicaba el deducible al total y las otras no, así que el
+// valor que se escribía en Monday podía diferir del PDF que firmaba el cliente.
+// Decisión de negocio (2026-08-20): el deducible es informativo, no suma.
 
-// Extrae el total de todas las tablas de precios en el HTML
+/** Total con IVA de un documento, para la columna de valor en Monday. */
 function extractPricingTotal(html) {
-  if (!html) return 0;
-  let total = 0;
-  let subtotalTarifas = 0;
-  let subtotalAcc     = 0;
-
-  // Buscar todos los nodos pricing-table (con o sin cierre)
-  const re = /<pricing-table([^>]*?)(?:\s*\/?>|>)/gi;
-  let m;
-  let tableCount = 0;
-
-  while ((m = re.exec(html)) !== null) {
-    tableCount++;
-    const attrs     = m[1];
-    const typeMatch = attrs.match(/data-table-type=["']([^"']+)["']/i);
-    const b64Match  = attrs.match(/data-items-b64=["']([^"']+)["']/i);
-    if (!b64Match || !typeMatch) {
-      console.log(`[Monday:total] tabla sin b64 o type — attrs: ${attrs.slice(0,100)}`);
-      continue;
-    }
-    const tableType = typeMatch[1];
-    try {
-      // Intentar decodificación estándar y Unicode-safe
-      let rawJson;
-      try {
-        rawJson = Buffer.from(b64Match[1], 'base64').toString('utf8');
-      } catch {
-        rawJson = decodeURIComponent(escape(atob(b64Match[1])));
-      }
-      const items = JSON.parse(rawJson);
-      console.log(`[Monday:total] tabla ${tableType} — ${items.length} items`);
-      for (const i of items) {
-        const qty = Number(i.quantity) || 1;
-        if (tableType === 'tarifas') {
-          const mensual   = (Number(i.dailyRate) || 0) * 30 * qty;
-          const deduc     = (Number(i.deductible) || 0) / 100;
-          const delivery  = Number(i.delivery)  || 0;
-          const retrieval = Number(i.retrieval) || 0;
-          subtotalTarifas += mensual * (1 + deduc) + delivery + retrieval;
-        } else if (tableType === 'accesorios') {
-          subtotalAcc += (Number(i.price) || 0) * qty;
-        }
-      }
-    } catch (e) {
-      console.log(`[Monday:total] error decodificando: ${e.message}`);
-    }
-  }
-
-  console.log(`[Monday:total] tablas encontradas: ${tableCount} | tarifas: ${subtotalTarifas} | acc: ${subtotalAcc}`);
-  // Total = (tarifas + adecuaciones) + 16% IVA
-  total = (subtotalTarifas + subtotalAcc) * 1.16;
-  return Math.round(total);
+  return Math.round(quoteFromHtml(html).totalConIVA);
 }
 
 /**
- * Extrae valores útiles de las tablas de precios del HTML del documento.
- * Devuelve un objeto con datos que se pueden mapear a columnas de Monday.
- * Ejemplo de uso: quoteValues.subtotalTarifas → columna "Valor renta mensual"
+ * Valores de la cotización para mapear a columnas de Monday.
+ * Devuelve null si no hay HTML, por compatibilidad con los llamadores.
  */
 export function extractQuoteValues(html) {
   if (!html) return null;
-  const values = {
-    rentaMensual:       0,   // Suma de renta mensual sola (dailyRate * 30 * qty, sin entrega/recolección)
-    entregaRecoleccion: 0,   // Suma de entrega + recolección sola
-    subtotalTarifas:    0,   // Suma de renta mensual + entrega + recolección (sin IVA) — rentaMensual + entregaRecoleccion
-    subtotalAdecuaciones: 0, // Suma de accesorios (sin IVA)
-    totalSinIVA:        0,   // subtotalTarifas + subtotalAdecuaciones
-    totalConIVA:        0,   // (totalSinIVA) * 1.16
-    ivaMonto:           0,   // totalSinIVA * 0.16
-    unidades:           [],  // ['Hino 3.5 caja Seca', ...] — nombres de las unidades (sin duplicados)
-    unidadesCount:      0,   // Cantidad total de unidades (suma de quantities)
-    primeraUnidad:      '',  // Nombre de la primera unidad (por si solo se mapea una)
+  const q = quoteFromHtml(html);
+  return {
+    rentaMensual:         q.rentaMensual,
+    entregaRecoleccion:   q.entregaRecoleccion,
+    subtotalTarifas:      q.subtotalTarifas,
+    subtotalAdecuaciones: q.subtotalAdecuaciones,
+    totalSinIVA:          Math.round(q.totalSinIVA),
+    ivaMonto:             Math.round(q.ivaMonto),
+    totalConIVA:          Math.round(q.totalConIVA),
+    unidades:             q.unidades,
+    unidadesCount:        q.unidadesCount,
+    primeraUnidad:        q.primeraUnidad,
   };
-
-  const re = /<pricing-table([^>]*?)(?:\s*\/?>|>)/gi;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    const attrs = m[1];
-    const typeMatch = attrs.match(/data-table-type=["']([^"']+)["']/i);
-    const b64Match  = attrs.match(/data-items-b64=["']([^"']+)["']/i);
-    if (!b64Match || !typeMatch) continue;
-    const tableType = typeMatch[1];
-    try {
-      let rawJson;
-      try { rawJson = Buffer.from(b64Match[1], 'base64').toString('utf8'); }
-      catch { rawJson = decodeURIComponent(escape(atob(b64Match[1]))); }
-      const items = JSON.parse(rawJson);
-
-      for (const i of items) {
-        const qty = Number(i.quantity) || 1;
-        if (tableType === 'tarifas') {
-          const mensual   = (Number(i.dailyRate) || 0) * 30 * qty;
-          const delivery  = Number(i.delivery)  || 0;
-          const retrieval = Number(i.retrieval) || 0;
-          values.rentaMensual       += mensual;
-          values.entregaRecoleccion += delivery + retrieval;
-          values.subtotalTarifas    += mensual + delivery + retrieval;
-          if (i.name) {
-            values.unidades.push(i.name);
-            if (!values.primeraUnidad) values.primeraUnidad = i.name;
-          }
-          values.unidadesCount += qty;
-        } else if (tableType === 'accesorios') {
-          values.subtotalAdecuaciones += (Number(i.price) || 0) * qty;
-        }
-      }
-    } catch { /* skip */ }
-  }
-
-  values.unidades    = [...new Set(values.unidades)];
-  values.totalSinIVA = Math.round(values.subtotalTarifas + values.subtotalAdecuaciones);
-  values.ivaMonto    = Math.round(values.totalSinIVA * 0.16);
-  values.totalConIVA = Math.round(values.totalSinIVA * 1.16);
-  return values;
 }
+
 
 async function createMondayDocItem({ docNumber, docName, clientName, companyName, clientEmail, mondayLeadId, totalAmount, html, mondayUserId }) {
   const token = process.env.MONDAY_API_TOKEN;

@@ -5,6 +5,7 @@ import { fileURLToPath as fileUrlToPath } from 'url';
 
 const __dirnamePdf = pathDirname(fileUrlToPath(import.meta.url));
 import { buildPricingTableHtml } from './catalogService.js';
+import { quoteFromHtml } from './quoteService.js';
 
 // Carpeta raíz de uploads (dos niveles arriba de services/)
 const UPLOADS_DIR = pathJoin(__dirnamePdf, '../../uploads');
@@ -30,43 +31,14 @@ function embedLocalImages(html) {
   });
 }
 
-// ── Procesa nodos <pricing-table> embebidos en el HTML ────────
-// Los nodos guardan items como base64 JSON en data-items-b64
-function parseAllTables(html) {
-  // Extrae todos los pricing-table del HTML para calcular totales del tipo "acuerdo"
-  const tables = { tarifas: [], accesorios: [] }
-  const re = /<pricing-table([^>]*)><\/pricing-table>/g
-  let m
-  while ((m = re.exec(html)) !== null) {
-    const attrs    = m[1]
-    const typeM    = attrs.match(/data-table-type="([^"]*)"/)
-    const b64M     = attrs.match(/data-items-b64="([^"]*)"/)
-    const tableType = typeM?.[1]
-    if (!b64M || !tableType) continue
-    try {
-      const its = JSON.parse(Buffer.from(b64M[1], 'base64').toString('utf8'))
-      if (tableType === 'tarifas')    tables.tarifas.push(...its)
-      if (tableType === 'accesorios') tables.accesorios.push(...its)
-    } catch {}
-  }
-  return tables
-}
-
 const fmt = n => `$${Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 
 export function processPricingTableNodes(html) {
-  // Pre-calcular totales de todas las tablas (para el tipo "acuerdo")
-  const allTables = parseAllTables(html)
-  // TARIFAS: subtotal = renta mensual + entrega + recolección (deducible es solo informativo)
-  const totalTarifas = allTables.tarifas.reduce((s,i) => {
-    const m = (Number(i.dailyRate)||0)*30*(Number(i.quantity)||1)
-    const d = Number(i.delivery)  || 0
-    const r = Number(i.retrieval) || 0
-    return s + m + d + r
-  }, 0)
-  // ADECUACIONES: total sin IVA
-  const totalAcc     = allTables.accesorios.reduce((s,i) => s + (Number(i.price)||0)*(Number(i.quantity)||1), 0)
-  const tarifasNames = allTables.tarifas.map(i => i.name).filter(Boolean)
+  // Los totales salen de quoteService — la misma fórmula que se manda a Monday.
+  // Antes se recalculaban aquí a mano y en documents.js por separado.
+  const quote        = quoteFromHtml(html)
+  const totalTarifas = quote.subtotalTarifas
+  const totalAcc     = quote.subtotalAdecuaciones
 
   return html.replace(
     /<pricing-table([^>]*)><\/pricing-table>/g,
@@ -98,15 +70,13 @@ export function processPricingTableNodes(html) {
           if (subtotal === 0) return ''
           const head = `<thead><tr>${TH('DESCRIPCIÓN')}${TH('SUBTOTAL','right')}${TH(`IVA ${ivaRate}%`,'right')}${TH('TOTAL','right')}</tr></thead>`
           let body = '<tbody>'
-          // Una fila por cada item de TARIFAS: subtotal = renta mensual + entrega + recolección
-          // (deducible es solo informativo, no suma)
-          for (const item of allTables.tarifas) {
-            const mensual   = (Number(item.dailyRate)||0) * 30 * (Number(item.quantity)||1)
-            const delivery  = Number(item.delivery)  || 0
-            const retrieval = Number(item.retrieval) || 0
-            const subItem   = mensual + delivery + retrieval
+          // Una fila por cada línea de TARIFAS. Los subtotales ya vienen
+          // calculados por quoteService (renta mensual + entrega + recolección;
+          // el deducible es informativo y no suma).
+          for (const linea of quote.lineasTarifas) {
+            const subItem = linea.subtotal
             if (subItem === 0) continue
-            body += `<tr>${TD(`Renta mensual ${item.name||''}`)}${TD(fmt(subItem),'right')}${TD(fmt(subItem*ivaRate/100),'right')}${TD(fmt(subItem*(1+ivaRate/100)),'right','font-weight:700;')}</tr>`
+            body += `<tr>${TD(`Renta mensual ${linea.name}`)}${TD(fmt(subItem),'right')}${TD(fmt(subItem*ivaRate/100),'right')}${TD(fmt(subItem*(1+ivaRate/100)),'right','font-weight:700;')}</tr>`
           }
           // Adecuaciones sin IVA (el IVA se suma en VALOR)
           if (totalAcc > 0) {

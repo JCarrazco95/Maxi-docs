@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "migrate": "node src/db/migrate.js"
+    "migrate": "node src/db/migrate.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
@@ -22,5 +24,8 @@
     "puppeteer": "^24.9.0",
     "stripe": "^22.1.1",
     "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
   }
 }
