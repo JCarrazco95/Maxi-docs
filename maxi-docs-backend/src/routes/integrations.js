@@ -11,6 +11,7 @@ import { query } from '../db/connection.js';
 import { fillTemplate, generatePdf, wrapDocumentHtml } from '../services/pdfService.js';
 import { uploadPdf } from '../services/storageService.js';
 import { sendSignatureRequest } from '../services/emailService.js';
+import { requireAdmin } from '../middleware/mondayAuth.js';
 import {
   buildAuthUrl,
   exchangeCodeForTokens,
@@ -21,7 +22,10 @@ import {
 } from '../services/gmailService.js';
 
 const router = Router();
-const JWT_SECRET    = process.env.JWT_SECRET || 'change-in-production';
+// Sin fallback: firmar el state del OAuth de Gmail con un secreto que está
+// escrito en el repositorio no es firmar nada. auth.js y embed.js ya lo hacían así.
+const JWT_SECRET    = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET debe estar definido en .env');
 const FRONTEND_URL  = process.env.FRONTEND_URL || 'http://localhost:8301';
 
 // ═════════════════════════════════════════════════════════════════
@@ -181,7 +185,8 @@ async function apiKeyAuth(req, res, next) {
 
 // ── Gestión de API Keys ─────────────────────────────────────────
 // GET /api/integrations/keys — listar keys de la cuenta (requiere auth de Monday)
-router.get('/keys', async (req, res) => {
+// Las API keys dan acceso permanente a los documentos de la cuenta: solo admin.
+router.get('/keys', requireAdmin, async (req, res) => {
   const { accountId } = req.mondayContext;
   const result = await query(
     `SELECT id, name, scopes, last_used_at, created_at FROM api_keys WHERE monday_account_id = $1 ORDER BY created_at DESC`,
@@ -191,7 +196,7 @@ router.get('/keys', async (req, res) => {
 });
 
 // POST /api/integrations/keys — crear nueva API key
-router.post('/keys', async (req, res) => {
+router.post('/keys', requireAdmin, async (req, res) => {
   const { accountId } = req.mondayContext;
   const { name, scopes } = req.body;
   if (!name) return res.status(400).json({ error: 'name es requerido' });
@@ -209,7 +214,7 @@ router.post('/keys', async (req, res) => {
 });
 
 // DELETE /api/integrations/keys/:id — eliminar key
-router.delete('/keys/:id', async (req, res) => {
+router.delete('/keys/:id', requireAdmin, async (req, res) => {
   const { accountId } = req.mondayContext;
   await query(`DELETE FROM api_keys WHERE id = $1 AND monday_account_id = $2`, [req.params.id, accountId]);
   res.status(204).end();
@@ -254,7 +259,8 @@ router.post('/documents/generate', apiKeyAuth, async (req, res) => {
   const filledHtml  = fillTemplate(tpl.content_html, variables);
   const wrappedHtml = wrapDocumentHtml(filledHtml);
   const pdfBuffer   = await generatePdf(wrappedHtml);
-  const pdfUrl      = await uploadPdf(pdfBuffer, `${accountId}-${Date.now()}.pdf`);
+  // uploadPdf recibe (key, buffer) — estaba invertido, ver signatures.js
+  const pdfUrl      = await uploadPdf(`documents/${accountId}-${Date.now()}.pdf`, pdfBuffer);
 
   const result = await query(
     `INSERT INTO documents (template_id, name, monday_account_id, monday_user_id, monday_item_id, filled_data, content_html, pdf_url, status)

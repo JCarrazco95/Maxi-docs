@@ -35,6 +35,32 @@ router.post('/', requireEditor, async (req, res) => {
   res.status(201).json(result.rows[0]);
 });
 
+// OJO CON EL ORDEN: esta ruta va ANTES de GET /:id. Express resuelve por orden
+// de declaración, así que con /:id declarada primero la petición a
+// /api/rooms/public/<token> entraba por ella con id='public', Postgres
+// intentaba castear 'public' a UUID y respondía 500. El enlace público de los
+// Deal Rooms no funcionó nunca. Mismo patrón que /portal/:id en signatures.js.
+// GET /api/rooms/public/:token — acceso público al room via token (para compradores)
+router.get('/public/:token', async (req, res) => {
+  const room = await query(`SELECT * FROM deal_rooms WHERE access_token = $1`, [req.params.token]);
+  if (!room.rows[0]) return res.status(404).json({ error: 'Room no encontrado' });
+
+  const [docs, messages] = await Promise.all([
+    query(
+      `SELECT d.id, d.name, d.status, d.pdf_url, rd.added_at
+       FROM room_documents rd JOIN documents d ON d.id = rd.document_id
+       WHERE rd.room_id = $1 ORDER BY rd.added_at DESC`,
+      [room.rows[0].id]
+    ),
+    query(
+      `SELECT * FROM room_messages WHERE room_id = $1 ORDER BY created_at ASC LIMIT 100`,
+      [room.rows[0].id]
+    ),
+  ]);
+
+  res.json({ ...room.rows[0], documents: docs.rows, messages: messages.rows });
+});
+
 // GET /api/rooms/:id — detalle de un room con documentos y mensajes
 router.get('/:id', async (req, res) => {
   const { accountId } = req.mondayContext;
@@ -126,27 +152,6 @@ router.delete('/:id', requireEditor, async (req, res) => {
   const { accountId } = req.mondayContext;
   await query(`DELETE FROM deal_rooms WHERE id = $1 AND monday_account_id = $2`, [req.params.id, accountId]);
   res.status(204).end();
-});
-
-// GET /api/rooms/public/:token — acceso público al room via token (para compradores)
-router.get('/public/:token', async (req, res) => {
-  const room = await query(`SELECT * FROM deal_rooms WHERE access_token = $1`, [req.params.token]);
-  if (!room.rows[0]) return res.status(404).json({ error: 'Room no encontrado' });
-
-  const [docs, messages] = await Promise.all([
-    query(
-      `SELECT d.id, d.name, d.status, d.pdf_url, rd.added_at
-       FROM room_documents rd JOIN documents d ON d.id = rd.document_id
-       WHERE rd.room_id = $1 ORDER BY rd.added_at DESC`,
-      [room.rows[0].id]
-    ),
-    query(
-      `SELECT * FROM room_messages WHERE room_id = $1 ORDER BY created_at ASC LIMIT 100`,
-      [room.rows[0].id]
-    ),
-  ]);
-
-  res.json({ ...room.rows[0], documents: docs.rows, messages: messages.rows });
 });
 
 export default router;

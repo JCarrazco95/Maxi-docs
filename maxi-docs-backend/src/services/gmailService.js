@@ -16,7 +16,11 @@ const SCOPE         = 'openid email https://www.googleapis.com/auth/gmail.send'
 // ── Cifrado simétrico del refresh_token ────────────────────────
 // AES-256-GCM. Clave derivada de APP_ENCRYPTION_KEY (min 32 chars en .env)
 function getKey() {
-  const raw = process.env.APP_ENCRYPTION_KEY || process.env.JWT_SECRET || 'change-in-production-very-long-key'
+  // Sin fallback a una cadena del repositorio: esto cifra los refresh_token de
+  // Gmail de los vendedores. Si la variable falta, hay que enterarse al
+  // arrancar, no descubrirlo cuando alguien lea la base de datos.
+  const raw = process.env.APP_ENCRYPTION_KEY || process.env.JWT_SECRET
+  if (!raw) throw new Error('APP_ENCRYPTION_KEY (o JWT_SECRET) debe estar definido en .env')
   return crypto.createHash('sha256').update(raw).digest()
 }
 

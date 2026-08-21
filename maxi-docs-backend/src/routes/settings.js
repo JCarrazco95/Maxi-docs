@@ -25,7 +25,9 @@ router.get('/', async (req, res) => {
 });
 
 // PUT /api/settings — crear o actualizar configuración
-router.put('/', async (req, res) => {
+// requireAdmin: la configuración de la cuenta (nombre, logo, correo de
+// notificaciones) la cambia un administrador, no cualquiera.
+router.put('/', requireAdmin, async (req, res) => {
   const { accountId } = req.mondayContext;
   const { company_name, logo_url, primary_color, email_from_name, notify_email, webhook_url } = req.body;
 
@@ -58,7 +60,8 @@ router.get('/webhooks', async (req, res) => {
 });
 
 // POST /api/settings/webhooks — agregar webhook
-router.post('/webhooks', async (req, res) => {
+// Un webhook saliente recibe TODOS los eventos de documentos de la cuenta.
+router.post('/webhooks', requireAdmin, async (req, res) => {
   const { accountId } = req.mondayContext;
   const { url, events } = req.body;
   if (!url) return res.status(400).json({ error: 'url es requerida' });
@@ -90,7 +93,7 @@ router.post('/webhooks', async (req, res) => {
 });
 
 // DELETE /api/settings/webhooks/:id — eliminar webhook
-router.delete('/webhooks/:id', async (req, res) => {
+router.delete('/webhooks/:id', requireAdmin, async (req, res) => {
   const { accountId } = req.mondayContext;
   await query(
     `DELETE FROM webhook_configs WHERE id = $1 AND monday_account_id = $2`,
@@ -105,7 +108,7 @@ router.get('/email/status', (_req, res) => {
 });
 
 // POST /api/settings/email/test — enviar email de prueba
-router.post('/email/test', async (req, res) => {
+router.post('/email/test', requireAdmin, async (req, res) => {
   const { to } = req.body;
   if (!to) return res.status(400).json({ error: 'Proporciona to (email destino)' });
 

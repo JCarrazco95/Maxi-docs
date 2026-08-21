@@ -387,7 +387,10 @@ router.get('/portal/:signatureId', async (req, res) => {
     document: {
       id:      row.document_id,
       name:    row.document_name,
-      pdf_url: row.pdf_url,
+      // El PDF ya no es público: hay que identificarse. El firmante lo hace con
+      // el id de su propia firma, que es el secreto que trae en su enlace y solo
+      // le da acceso a SU documento. Ver documents.js GET /:id/pdf.
+      pdf_url: `/api/documents/${row.document_id}/pdf?sig=${row.id}`,
     },
   });
 });
@@ -585,7 +588,9 @@ router.post('/:signatureId/time-spent', async (req, res) => {
   const { seconds } = req.body;
   if (!seconds || seconds < 1) return res.status(400).json({ error: 'seconds requerido' });
   await query(
-    `UPDATE signatures SET time_spent_seconds = time_spent_seconds + $1 WHERE id = $2`,
+    // COALESCE: la columna arranca en NULL y NULL + 5 es NULL, así que el
+    // tiempo de lectura nunca se acumulaba.
+    `UPDATE signatures SET time_spent_seconds = COALESCE(time_spent_seconds, 0) + $1 WHERE id = $2`,
     [Math.round(seconds), req.params.signatureId]
   );
   res.json({ ok: true });
@@ -617,7 +622,9 @@ router.post('/bulk-send', requireEditor, async (req, res) => {
       const filledHtml = fillTemplate(tpl.content_html, contact.variables || {});
       const wrappedHtml = wrapDocumentHtml(filledHtml);
       const pdfBuffer  = await generatePdf(wrappedHtml);
-      const pdfUrl     = await uploadPdf(pdfBuffer, `${accountId}-bulk-${Date.now()}.pdf`);
+      // uploadPdf recibe (key, buffer). Estaba al revés: con R2 configurado se le
+      // pasaba un Buffer como nombre de archivo y el envío masivo no funcionaba.
+      const pdfUrl     = await uploadPdf(`documents/${accountId}-bulk-${Date.now()}.pdf`, pdfBuffer);
 
       // Crear documento
       const docRes = await query(

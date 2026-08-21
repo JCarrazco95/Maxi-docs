@@ -6,7 +6,7 @@ import { uploadPdf, buildPdfKey, uploadFile, buildAttachmentKey, deleteFile } fr
 import { buildPricingTableHtml } from '../services/catalogService.js';
 import { quoteFromHtml } from '../services/quoteService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
-import { logEvent, hashPdfFile } from '../services/auditService.js';
+import { logEvent, hashBuffer } from '../services/auditService.js';
 
 const router = Router();
 
@@ -228,8 +228,16 @@ router.get('/stats', async (req, res) => {
   const { accountId, userId, isAdmin } = req.mondayContext;
   const { monday_item_id } = req.query;
 
-  const itemCond   = monday_item_id ? ` AND monday_item_id = '${monday_item_id}'` : '';
-  const itemCondD  = monday_item_id ? ` AND d.monday_item_id = '${monday_item_id}'` : '';
+  // monday_item_id viene del query string. Antes se concatenaba directo en las
+  // seis consultas de abajo — era inyección SQL. Ahora va como parámetro.
+  const params = isAdmin ? [accountId] : [accountId, userId];
+  let itemCond = '';
+  let itemCondD = '';
+  if (monday_item_id) {
+    params.push(String(monday_item_id));
+    itemCond  = ` AND monday_item_id = $${params.length}`;
+    itemCondD = ` AND d.monday_item_id = $${params.length}`;
+  }
 
   const docFilter = isAdmin
     ? `d.monday_account_id = $1${itemCondD}`
@@ -237,7 +245,6 @@ router.get('/stats', async (req, res) => {
   const simpleFilter = isAdmin
     ? `monday_account_id = $1${itemCond}`
     : `monday_account_id = $1 AND monday_user_id = $2${itemCond}`;
-  const params = isAdmin ? [accountId] : [accountId, userId];
 
   const [counts, recent, byTemplate, timingRow, overdueRow, periodRows] = await Promise.all([
     query(`SELECT status, COUNT(*) AS count FROM documents WHERE ${simpleFilter} GROUP BY status`, params),
@@ -374,14 +381,44 @@ router.get('/', async (req, res) => {
   res.json(result.rows);
 });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // GET /api/documents/:id/pdf — sirve el PDF desde PostgreSQL
+//
+// Antes no comprobaba nada: con el UUID del documento cualquiera se lo bajaba, y
+// ese UUID viaja en correos, logs y en la URL del portal. Ahora hay dos formas
+// legítimas de llegar:
+//   1. Desde la app, siendo de la cuenta dueña del documento.
+//   2. Desde el portal del firmante, con ?sig=<id de su firma>. Ese UUID es el
+//      secreto que el cliente ya tiene en su enlace, y solo abre SU documento.
 router.get('/:id/pdf', async (req, res) => {
+  const { accountId } = req.mondayContext ?? {};
+  const { sig } = req.query;
+
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: 'Documento no encontrado' });
+  }
+
   const result = await query(
-    `SELECT name, signed_pdf_content, pdf_content FROM documents WHERE id = $1`,
+    `SELECT name, monday_account_id, signed_pdf_content, pdf_content FROM documents WHERE id = $1`,
     [req.params.id]
   );
   const doc = result.rows[0];
   if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
+
+  let allowed = Boolean(accountId) && doc.monday_account_id === accountId;
+
+  if (!allowed && typeof sig === 'string' && UUID_RE.test(sig)) {
+    const signer = await query(
+      `SELECT 1 FROM signatures WHERE id = $1 AND document_id = $2`,
+      [sig, req.params.id]
+    );
+    allowed = signer.rowCount > 0;
+  }
+
+  if (!allowed) {
+    return res.status(403).json({ error: 'No tienes acceso a este documento' });
+  }
 
   const content = doc.signed_pdf_content || doc.pdf_content;
   if (!content) return res.status(404).send('PDF no disponible aún');
@@ -473,10 +510,15 @@ router.post('/generate', requireEditor, async (req, res) => {
   // 3. Generar PDF con Puppeteer
   const pdfBuffer = await generatePdf(fullHtml);
 
-  // 4. Subir PDF a Cloudflare R2
+  // 4. Copia del PDF en almacenamiento de archivos.
+  // La fuente de verdad es la columna pdf_content de Postgres y la URL que se
+  // guarda es la de la API (paso 7), así que esto es solo una copia: en local
+  // deja el archivo en uploads/documents/, que selfSignService usa como
+  // respaldo al firmar. El valor de retorno (la URL de R2) no se usa a
+  // propósito — mover los binarios a R2 de verdad es trabajo de la Fase 4.
   const documentId = uuidv4();
   const pdfKey = buildPdfKey(documentId);
-  const pdfUrl = await uploadPdf(pdfKey, pdfBuffer);
+  await uploadPdf(pdfKey, pdfBuffer);
 
   // Miniatura para el preview del correo — en background, no bloquea la respuesta
   scheduleDocumentThumbnail(documentId, fullHtml);
@@ -533,7 +575,11 @@ router.post('/generate', requireEditor, async (req, res) => {
     documentId: doc.id,
     action:     'document.created',
     actor:      { id: userId },
-    pdfHash:    hashPdfFile(apiPdfUrl),
+    // hashBuffer sobre el PDF que ya tenemos en memoria. Antes se llamaba a
+    // hashPdfFile(apiPdfUrl), que hace split('/').pop() sobre
+    // "/api/documents/<uuid>/pdf" y acababa buscando un archivo llamado "pdf":
+    // siempre devolvía null y la auditoría quedaba sin hash.
+    pdfHash:    hashBuffer(pdfBuffer),
     metadata:   { template_id, name, monday_item_id, monday_doc_item_id: mondayDocItemId },
   });
 
