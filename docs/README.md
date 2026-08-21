@@ -10,7 +10,8 @@ documentos tipo PandaDoc.
 | [02 — Arquitectura](02-ARQUITECTURA.md) | Qué está bien, qué está mal, y la arquitectura objetivo |
 | [03 — Cómo funciona PandaDoc](03-COMO-FUNCIONA-PANDADOC.md) | Su modelo de datos, comparación capacidad por capacidad, qué copiar y qué no |
 | [04 — Roadmap v3](04-ROADMAP-V3.md) | Plan por fases con esfuerzos estimados |
-| [05 — Entorno lab](05-ENTORNO-LAB.md) | Cómo trabajar sin tocar producción |
+| [05 — Entorno lab](05-ENTORNO-LAB.md) | Cómo trabajar sin tocar producción (✅ funcionando) |
+| [06 — Cotizaciones múltiples y versiones](06-COTIZACIONES-MULTIPLES-Y-VERSIONES.md) | Varias cotizaciones por cliente, e historial de quién hizo qué |
 
 ---
 
