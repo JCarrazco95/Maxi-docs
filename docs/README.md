@@ -12,6 +12,8 @@ documentos tipo PandaDoc.
 | [04 — Roadmap v3](04-ROADMAP-V3.md) | Plan por fases con esfuerzos estimados |
 | [05 — Entorno lab](05-ENTORNO-LAB.md) | Cómo trabajar sin tocar producción (✅ funcionando) |
 | [06 — Cotizaciones múltiples y versiones](06-COTIZACIONES-MULTIPLES-Y-VERSIONES.md) | Varias cotizaciones por cliente, e historial de quién hizo qué |
+| [07 — ¿Se borra lo que ya tenemos?](07-SE-BORRA-LO-QUE-YA-TENEMOS.md) | No. Cómo se despliega la v3 sin perder un solo documento |
+| [**PROGRESO**](PROGRESO.md) | **Qué está arreglado y qué sigue** |
 
 ---
 
