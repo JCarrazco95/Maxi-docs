@@ -14,6 +14,9 @@ build/
 # PDFs generados localmente
 maxi-docs-backend/uploads/
 
+# Respaldos de la BD (contienen datos de clientes)
+maxi-docs-backend/backups/
+
 # Logs
 *.log
 npm-debug.log*

@@ -28,9 +28,10 @@ RUN apt-get update && apt-get install -y \
   --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 # NO usamos PUPPETEER_SKIP_CHROMIUM_DOWNLOAD → npm ci descarga el Chromium
-# que corresponde a la versión de Puppeteer instalada. Guardamos en /app/.cache
-# para que persista con el layer de node_modules.
-ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
+# que corresponde a la versión de Puppeteer instalada. El caché va FUERA de
+# /app: en local docker-compose monta el código sobre /app y lo taparía,
+# dejando a Puppeteer sin navegador. En producción no hay bind mount.
+ENV PUPPETEER_CACHE_DIR=/opt/puppeteer
 
 WORKDIR /app
 
