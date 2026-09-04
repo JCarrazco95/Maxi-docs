@@ -44,7 +44,7 @@ function rowSubtotal(item, tableType) {
     // así que su dailyRate queda en 0 y no aporta al total.
     return monthlyFrom(item.dailyRate, qty)
   }
-  if (tableType === 'adicionales') {
+  if (tableType === 'adicionales' || tableType === 'costos') {
     return (Number(item.price) || 0) * qty
   }
   if (tableType === 'tarifas') {
@@ -59,6 +59,7 @@ function rowSubtotal(item, tableType) {
 function manualRowDefaults(tableType) {
   const base = { id: Date.now(), name: '', price: 0, quantity: 1, sku: '' }
   if (tableType === 'tabulador')   return { id: Date.now(), grupo: '', tramo: '', name: '', specs: '', quantity: 1, dailyRate: 0, rateOverride: false, manualName: false }
+  if (tableType === 'costos')      return { id: Date.now(), estado: '', municipio: '', tipo: '', name: '', specs: '', quantity: 1, price: 0, priceOverride: false }
   if (tableType === 'adicionales') return { id: Date.now(), name: '', specs: '', quantity: 1, price: 0 }
   if (tableType === 'tarifas')   return { ...base, dailyRate: 0, deductible: 10, delivery: 0, retrieval: 0 }
   if (tableType === 'acuerdo')   return { id: Date.now(), name: '', subtotal: 0, ivaPct: 16 }
@@ -69,6 +70,7 @@ function manualRowDefaults(tableType) {
 
 function typeDefaults(tableType) {
   if (tableType === 'tabulador')   return { grupo: '', tramo: '', specs: '', dailyRate: 0, rateOverride: false }
+  if (tableType === 'costos')      return { estado: '', municipio: '', tipo: '', specs: '', priceOverride: false }
   if (tableType === 'adicionales') return { specs: '' }
   if (tableType === 'tarifas')   return { dailyRate: 0, deductible: 10, delivery: 0, retrieval: 0 }
   if (tableType === 'acuerdo')   return { subtotal: 0, ivaPct: 16 }
@@ -83,6 +85,11 @@ const COLS = {
   // En el PDF solo salen las 4 columnas del diseño.
   tabulador:  { grid: '58px 1.25fr 108px 1.25fr 104px 104px 118px 40px', headers: ['CANT.', 'UNIDAD', 'GRUPO', 'ESPECIFICACIONES', 'PLAZO', 'TARIFA DIARIA', 'MENSUALIDAD', ''], align: ['center', 'left', 'left', 'left', 'left', 'right', 'right', 'center'] },
   // Propuesta LP — COSTOS ADICIONALES y ADECUACIONES
+  // Propuesta LP — COSTOS ADICIONALES. Estado y municipio salen del board de
+  // Traslados; el costo depende además del tipo de unidad. Ojo: NO se llama
+  // 'traslados' porque ese tipo ya existe (la tabla de la plantilla vieja).
+  // En el PDF solo se imprimen las 4 columnas del diseño.
+  costos:     { grid: '52px 116px 130px 126px 1fr 108px 40px', headers: ['CANT.', 'ESTADO', 'MUNICIPIO', 'TIPO DE UNIDAD', 'CONCEPTO', 'COSTO', ''], align: ['center', 'left', 'left', 'left', 'left', 'right', 'center'] },
   adicionales:{ grid: '58px 1.1fr 1.4fr 130px 40px', headers: ['CANT.', 'UNIDAD', 'ESPECIFICACIONES', 'MENSUALIDAD SIN IVA', ''], align: ['center', 'left', 'left', 'right', 'center'] },
   // Tipo de unidad más ancha (2fr), campos numéricos ajustados
   tarifas:    { grid: '2fr 60px 84px 116px 126px 104px 104px 40px', headers: ['TIPO DE UNIDAD', 'CANT.', 'DEDUCIBLE', 'RENTA DIARIA', 'RENTA MENSUAL', 'ENTREGA', 'RECOLECCIÓN', ''], align: ['left', 'center', 'center', 'right', 'right', 'right', 'right', 'center'] },
@@ -198,6 +205,7 @@ function TextInput({ value, onSave, placeholder, list, listOptions }) {
 // las tablas del documento.
 let rateRowsPromise = null
 let unitGroupsPromise = null
+let trasladosPromise = null
 
 function loadRateRows() {
   if (!rateRowsPromise) {
@@ -206,6 +214,15 @@ function loadRateRows() {
       .catch(() => [])
   }
   return rateRowsPromise
+}
+
+function loadTraslados() {
+  if (!trasladosPromise) {
+    trasladosPromise = api.get('/api/traslados')
+      .then(r => ({ estados: r.data?.estados ?? [], tipos: r.data?.tipos ?? [] }))
+      .catch(() => ({ estados: [], tipos: [] }))
+  }
+  return trasladosPromise
 }
 
 function loadUnitGroups() {
@@ -263,6 +280,19 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
     loadUnitGroups().then(g => { if (alive) setUnitGroups(g) })
     return () => { alive = false }
   }, [tableType])
+
+  // ── Destinos de traslado (board de Monday) ───────────────────
+  const [traslados, setTraslados] = useState({ estados: [], tipos: [] })
+  useEffect(() => {
+    if (tableType !== 'costos') return
+    let alive = true
+    loadTraslados().then(t => { if (alive) setTraslados(t) })
+    return () => { alive = false }
+  }, [tableType])
+
+  const estadoSel   = e => traslados.estados.find(x => x.estado === e) ?? null
+  const municipioDe = (e, m) => estadoSel(e)?.municipios.find(x => x.municipio === m) ?? null
+  const tipoLabel   = id => traslados.tipos.find(t => t.id === id)?.label ?? ''
 
   const rateByGrupo = new Map(rateRows.map(r => [r.grupo, r]))
   // nombre de unidad → grupo del tabulador, para deducir el grupo al elegirla
@@ -335,6 +365,42 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
         : { ...i, rateOverride: false, dailyRate: rateFor(rateByGrupo.get(i.grupo), i.tramo) ?? 0 }
     }))
   }
+  /**
+   * Estado, municipio y tipo determinan el costo del traslado. Concepto y
+   * especificaciones se recomponen a partir de la selección para que lo que
+   * ve el cliente en el PDF siempre coincida con lo cotizado; quedan
+   * editables después por si quieren redactarlo distinto.
+   */
+  function setTraslado(id, patch) {
+    saveItems(items.map(i => {
+      if (i.id !== id) return i
+      const next = { ...i, ...patch }
+      // Cambiar de estado invalida el municipio elegido
+      if (patch.estado !== undefined && patch.estado !== i.estado) next.municipio = ''
+      const muni = municipioDe(next.estado, next.municipio)
+      if (muni) {
+        next.name  = `Traslado a ${muni.municipio}`
+        next.specs = [next.estado, tipoLabel(next.tipo)].filter(Boolean).join(' · ')
+        if (!next.priceOverride) next.price = (next.tipo && muni.costos[next.tipo]) || 0
+      } else if (patch.estado !== undefined || patch.municipio !== undefined) {
+        // Sin municipio no hay traslado: limpiar lo derivado. Si no, al cambiar
+        // de estado quedaba una fila que decía "Traslado a SALTILLO" con el
+        // precio de Saltillo bajo otro estado — listo para enviarse sin que
+        // nadie lo note.
+        next.name  = ''
+        next.specs = ''
+        if (!next.priceOverride) next.price = 0
+      }
+      return next
+    }))
+  }
+  /** Costo que publica el board para este renglón — null si falta algún dato. */
+  function costoDeTabla(item) {
+    const muni = municipioDe(item.estado, item.municipio)
+    if (!muni || !item.tipo) return null
+    return muni.costos[item.tipo] ?? null
+  }
+
   /** Tarifa que la tabla publica para este renglón — null si no aplica. */
   function tableRateOf(item) {
     return rateFor(rateByGrupo.get(item.grupo), item.tramo)
@@ -484,6 +550,113 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
             <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end',
               paddingRight:8, fontWeight:700, color:'#063B4A', fontSize:12 }}>
               {sinTabla ? '—' : fmt(monthlyFrom(item.dailyRate, qty))}
+            </div>
+
+            <div className="pt-c-del">
+              <button type="button" className="pt-del-btn" onClick={() => removeItem(item.id)}>
+                <IconTrash />
+              </button>
+            </div>
+          </div>
+
+          {aviso && (
+            <div style={{ background:'#FFF7E6', color:'#8A5A00', fontSize:11, fontWeight:600,
+              padding:'3px 12px 6px', borderBottom:'1px solid #f0f1f5' }}>
+              ⚠ {aviso}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // ── TIPO COSTOS (propuesta LP) — traslados del board ────────
+    if (tableType === 'costos') {
+      const tabla    = costoDeTabla(item)
+      const munis    = estadoSel(item.estado)?.municipios ?? []
+      const sinTarifa = item.municipio && item.tipo && tabla == null
+      const aviso = sinTarifa
+        ? `Sin tarifa para ${item.municipio} en ${tipoLabel(item.tipo)} — captúrala a mano`
+        : null
+
+      return (
+        <div key={item.id}>
+          <div className="pt-row" style={{
+            gridTemplateColumns: cols.grid,
+            background: aviso ? '#FFF7E6' : undefined,
+          }}>
+            {/* Cant. */}
+            <div style={{ display:'flex', justifyContent:'center', alignItems:'center' }}>
+              <NumInput value={item.quantity ?? 1} onSave={n => setField(item.id, 'quantity', n)}
+                min="1" step="1" w={34} />
+            </div>
+
+            {/* Estado */}
+            <div className="pt-c-name">
+              <select className="pt-text-input" value={item.estado ?? ''}
+                onChange={e => setTraslado(item.id, { estado: e.target.value })}
+                onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                <option value="">
+                  {traslados.estados.length === 0 ? '— sin destinos —' : '— estado —'}
+                </option>
+                {traslados.estados.map(e => (
+                  <option key={e.estado} value={e.estado}>{e.estado}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Municipio — filtrado por el estado elegido */}
+            <div className="pt-c-name">
+              <select className="pt-text-input" value={item.municipio ?? ''}
+                disabled={!item.estado}
+                onChange={e => setTraslado(item.id, { municipio: e.target.value })}
+                onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                <option value="">{item.estado ? '— municipio —' : '— elige estado —'}</option>
+                {munis.map(m => (
+                  <option key={m.municipio} value={m.municipio}>{m.municipio}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Tipo de unidad — las 7 categorías del board de traslados, que
+                no son los grupos del tabulador */}
+            <div className="pt-c-name">
+              <select className="pt-text-input" value={item.tipo ?? ''}
+                onChange={e => setTraslado(item.id, { tipo: e.target.value })}
+                onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+                <option value="">— tipo —</option>
+                {traslados.tipos.map(t => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Concepto — se compone solo al elegir destino, editable después */}
+            <div className="pt-c-name">
+              <TextInput onSave={v => setFieldText(item.id, 'name', v)} value={item.name}
+                placeholder="Concepto…" />
+            </div>
+
+            {/* Costo — del board, con override manual */}
+            <div style={{ display:'flex', alignItems:'center', gap:3, justifyContent:'flex-end', paddingRight:4 }}>
+              {item.priceOverride || tabla == null ? (
+                <>
+                  <span style={{ fontSize:11, color:'#676879' }}>$</span>
+                  <NumInput value={item.price ?? 0} onSave={n => setField(item.id, 'price', n)} w={62} />
+                </>
+              ) : (
+                <span style={{ fontSize:12, color:'#323338' }}>{fmt(item.price ?? 0)}</span>
+              )}
+              {tabla != null && (
+                <button type="button" className="pt-del-btn"
+                  title={item.priceOverride ? 'Volver al costo del tablero' : 'Editar el costo a mano'}
+                  style={{ color: item.priceOverride ? '#F58220' : '#9699a6' }}
+                  onClick={() => setTraslado(item.id, {
+                    priceOverride: !item.priceOverride,
+                    ...(item.priceOverride ? { price: tabla } : {}),
+                  })}>
+                  <IconEdit />
+                </button>
+              )}
             </div>
 
             <div className="pt-c-del">
@@ -807,7 +980,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
         if (n.type.name !== 'pricingTable') return
         const its = decodeItems(n.attrs.itemsB64)
         if (n.attrs.tableType === 'tabulador')   tabItems.push(...its)
-        if (n.attrs.tableType === 'adicionales') addItems.push(...its)
+        if (n.attrs.tableType === 'adicionales' || n.attrs.tableType === 'costos') addItems.push(...its)
       })
     } catch { /* documento aún montándose — el hero se recalcula al siguiente update */ }
 
@@ -977,7 +1150,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
             )}
           </div>
           <div className="pt-header-right">
-            {!['tarifas','accesorios','acuerdo','tabulador','adicionales'].includes(tableType) && (
+            {!['tarifas','accesorios','acuerdo','tabulador','adicionales','costos'].includes(tableType) && (
               <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>IVA 16%</span>
             )}
           </div>
@@ -1018,7 +1191,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
         <div className="pt-add-row">
           {/* El catálogo no aplica al tabulador: ahí el precio lo fija la
               tabla de tarifas por plazo, no el precio del producto. */}
-          {!['personalizada','tabulador'].includes(tableType) && (
+          {!['personalizada','tabulador','costos'].includes(tableType) && (
             <button type="button" className="pt-add-btn" onClick={() => setCatalogOpen(true)}>
               <IconPlus /> Del catálogo
             </button>
@@ -1079,7 +1252,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
 
         {/* Totales de la propuesta LP — sin IVA: el total consolidado y el
             IVA viven en el hero, repetirlos por tabla contradiría el diseño */}
-        {items.length > 0 && ['tabulador','adicionales'].includes(tableType) && (
+        {items.length > 0 && ['tabulador','adicionales','costos'].includes(tableType) && (
           <div className="pt-totals">
             <div className="pt-total-line pt-total-grand">
               <span>{tableType === 'tabulador' ? 'Total renta mensual' : 'Total'}</span>
@@ -1091,7 +1264,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
         )}
 
         {/* Totales con IVA — renta, traslados, generic */}
-        {items.length > 0 && !['personalizada','tarifas','accesorios','acuerdo','tabulador','adicionales'].includes(tableType) && (
+        {items.length > 0 && !['personalizada','tarifas','accesorios','acuerdo','tabulador','adicionales','costos'].includes(tableType) && (
           <div className="pt-totals">
             <div className="pt-total-line">
               <span>IVA {ivaRate}%</span>

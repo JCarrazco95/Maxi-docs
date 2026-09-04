@@ -89,7 +89,7 @@ function extractPricingTotal(html) {
           // Propuesta LP: mensualidad del tabulador. Sin deducible — ese campo
           // no existe en este tipo de tabla.
           subtotalTarifas += monthlyFrom(i.dailyRate, qty);
-        } else if (tableType === 'adicionales') {
+        } else if (tableType === 'adicionales' || tableType === 'costos') {
           subtotalAcc += (Number(i.price) || 0) * qty;
         }
       }
@@ -169,7 +169,7 @@ export function extractQuoteValues(html) {
           }
           values.unidadesCount += qty;
           if (i.tramo) tramosCotizados.push(i.tramo);
-        } else if (tableType === 'adicionales') {
+        } else if (tableType === 'adicionales' || tableType === 'costos') {
           values.subtotalAdecuaciones += (Number(i.price) || 0) * qty;
         }
       }
