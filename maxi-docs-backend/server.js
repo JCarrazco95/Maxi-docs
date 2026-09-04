@@ -18,6 +18,7 @@ import embedRouter          from './src/routes/embed.js';
 import integrationsRouter   from './src/routes/integrations.js';
 import dealRoomsRouter      from './src/routes/dealRooms.js';
 import cpqRouter            from './src/routes/cpq.js';
+import rateCardsRouter      from './src/routes/rateCards.js';
 import workspacesRouter     from './src/routes/workspaces.js';
 import authRouter           from './src/routes/auth.js';
 import mondayRouter         from './src/routes/monday.js';
@@ -70,6 +71,7 @@ app.use('/api/embed',           embedRouter);
 app.use('/api/integrations',    integrationsRouter);
 app.use('/api/rooms',           dealRoomsRouter);
 app.use('/api/cpq',             cpqRouter);
+app.use('/api/rate-cards',      rateCardsRouter);
 app.use('/api/workspaces',      workspacesRouter);
 app.use('/api/monday',          mondayRouter);
 // Auth público — sin extractMondayContext (acceso externo via Google OAuth)
