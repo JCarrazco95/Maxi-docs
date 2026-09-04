@@ -13,8 +13,11 @@ const router = Router();
 // del documento. Nunca lanza — si algo falla, el correo sale sin esos datos.
 function extractEmailDisplayData(document) {
   let unidades = [];
+  let plazoTabulador = null;
   try {
-    unidades = extractQuoteValues(document.content_html)?.unidades ?? [];
+    const quote = extractQuoteValues(document.content_html);
+    unidades       = quote?.unidades ?? [];
+    plazoTabulador = quote?.plazoMinimo || null;
   } catch { /* ignorar */ }
   let plazo = null;
   try {
@@ -22,7 +25,9 @@ function extractEmailDisplayData(document) {
       ? JSON.parse(document.filled_data) : (document.filled_data ?? {});
     plazo = filled.plazo || null;
   } catch { /* ignorar */ }
-  return { unidades, plazo };
+  // En la propuesta LP el plazo lo define el tramo cotizado, no la columna
+  // "Duración del Proyecto" del board — pero esa columna manda si viene llena.
+  return { unidades, plazo: plazo || plazoTabulador };
 }
 
 // Carga los adjuntos de soporte de un documento y descarga su contenido

@@ -5,6 +5,7 @@ import { fileURLToPath as fileUrlToPath } from 'url';
 
 const __dirnamePdf = pathDirname(fileUrlToPath(import.meta.url));
 import { buildPricingTableHtml } from './catalogService.js';
+import { monthlyFrom, minTramo, tramoById } from './rateCardService.js';
 
 // Carpeta raíz de uploads (dos niveles arriba de services/)
 const UPLOADS_DIR = pathJoin(__dirnamePdf, '../../uploads');
@@ -33,8 +34,9 @@ function embedLocalImages(html) {
 // ── Procesa nodos <pricing-table> embebidos en el HTML ────────
 // Los nodos guardan items como base64 JSON en data-items-b64
 function parseAllTables(html) {
-  // Extrae todos los pricing-table del HTML para calcular totales del tipo "acuerdo"
-  const tables = { tarifas: [], accesorios: [] }
+  // Extrae todos los pricing-table del HTML para calcular los totales de los
+  // tipos auto-calculados: "acuerdo" (plantilla comercial) y "resumen" (LP).
+  const tables = { tarifas: [], accesorios: [], tabulador: [], adicionales: [] }
   const re = /<pricing-table([^>]*)><\/pricing-table>/g
   let m
   while ((m = re.exec(html)) !== null) {
@@ -45,8 +47,7 @@ function parseAllTables(html) {
     if (!b64M || !tableType) continue
     try {
       const its = JSON.parse(Buffer.from(b64M[1], 'base64').toString('utf8'))
-      if (tableType === 'tarifas')    tables.tarifas.push(...its)
-      if (tableType === 'accesorios') tables.accesorios.push(...its)
+      if (tables[tableType]) tables[tableType].push(...its)
     } catch {}
   }
   return tables
@@ -67,6 +68,17 @@ export function processPricingTableNodes(html) {
   // ADECUACIONES: total sin IVA
   const totalAcc     = allTables.accesorios.reduce((s,i) => s + (Number(i.price)||0)*(Number(i.quantity)||1), 0)
   const tarifasNames = allTables.tarifas.map(i => i.name).filter(Boolean)
+
+  // ── Totales de la plantilla LP, para el hero "resumen" ──────────
+  // Las filas con tramo 13+ no tienen tarifa de tabla: su dailyRate queda en 0
+  // y por lo tanto no aportan al total.
+  const totalTabulador = allTables.tabulador.reduce(
+    (s,i) => s + monthlyFrom(i.dailyRate, i.quantity), 0)
+  const totalAdicional = allTables.adicionales.reduce(
+    (s,i) => s + (Number(i.price)||0)*(Number(i.quantity)||1), 0)
+  const unidadesCount  = allTables.tabulador.reduce(
+    (s,i) => s + (Number(i.quantity)||1), 0)
+  const plazoMinimo    = minTramo(allTables.tabulador.map(i => i.tramo).filter(Boolean))
 
   return html.replace(
     /<pricing-table([^>]*)><\/pricing-table>/g,
@@ -89,6 +101,37 @@ export function processPricingTableNodes(html) {
         const TD        = (t,a='left',extra='') => `<td style="padding:7px 10px;font-size:9pt;text-align:${a};border-bottom:1px solid #e5e7eb;${extra}">${t??''}</td>`
         const tblStyle  = `width:100%;border-collapse:collapse;font-family:Arial,sans-serif;margin:8px 0;border:1px solid #e5e7eb;`
         const tbl       = (head,body,foot='') => `<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;margin:4px 0;">${head}${body}${foot}</table>`
+
+        // ── TIPO RESUMEN — hero de la propuesta LP, auto calculado ──
+        // No tiene items propios: lee las tablas tabulador + adicionales del
+        // documento. Se renderiza siempre, aunque esté en cero, porque es el
+        // encabezado visual de la propuesta y su ausencia rompería el layout.
+        if (tableType === 'resumen') {
+          const montoTotal = totalTabulador + totalAdicional
+          const unidadesTxt = unidadesCount === 1 ? '1 unidad' : `${unidadesCount} unidades`
+          // Dos líneas deliberadas en vez de una sola que se parte sola: en un
+          // A4 el ancho útil es ~182mm y "N unidades | Plazo mínimo X a Y meses"
+          // no cabe en un renglón a este tamaño.
+          const plazoTxt    = plazoMinimo
+            ? `Plazo mínimo ${tramoById(plazoMinimo)?.label ?? plazoMinimo}`
+            : 'Plazo por definir'
+          const exact = '-webkit-print-color-adjust:exact;print-color-adjust:exact;'
+          // padding-right en la columna derecha reserva el hueco de la mascota,
+          // que la plantilla superpone con position:absolute.
+          return `<div style="background:#063B4A;border-left:6px solid #F58220;border-radius:5px;padding:18px 22px;margin:14px 0 4px;display:flex;align-items:center;${exact}">
+            <div style="flex:1.15;padding-right:18px;">
+              <div style="font-size:8pt;font-weight:700;color:#F58220;letter-spacing:1px;text-transform:uppercase;margin-bottom:7px;">Tu solución en una mirada</div>
+              <div style="font-size:15pt;font-weight:800;color:#FFFFFF;line-height:1.2;">${unidadesTxt}</div>
+              <div style="font-size:10pt;font-weight:700;color:#C3D4DA;line-height:1.3;margin-top:3px;">${plazoTxt}</div>
+            </div>
+            <div style="width:1px;align-self:stretch;background:rgba(255,255,255,0.25);"></div>
+            <div style="flex:1;padding-left:18px;padding-right:112px;text-align:center;">
+              <div style="font-size:8pt;font-weight:700;color:#FFFFFF;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Mensualidad total</div>
+              <div style="font-size:21pt;font-weight:900;color:#FFFFFF;line-height:1.1;white-space:nowrap;">${fmt(montoTotal)}</div>
+              <div style="font-size:8pt;font-weight:700;color:#F58220;letter-spacing:0.8px;margin-top:4px;">IVA NO INCLUIDO</div>
+            </div>
+          </div>`
+        }
 
         // ── TIPO ACUERDO — auto calculado ───────────────────────────
         if (tableType === 'acuerdo') {
@@ -122,6 +165,15 @@ export function processPricingTableNodes(html) {
         }
 
         if (!items?.length) return ''
+
+        // ── TABLAS DE LA PROPUESTA LP ──────────────────────────────
+        // Título alineado a la izquierda en navy, como el diseño de cotizacion_LP.
+        if (tableType === 'tabulador' || tableType === 'adicionales') {
+          return `<div style="margin:16px 0 4px;">
+            <div style="font-weight:800;font-size:9.5pt;color:#063B4A;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;">${title}</div>
+            ${buildPricingTableHtml(items, ivaRate, tableType)}
+          </div>`
+        }
 
         // ── TABLA TARIFAS — con título ─────────────────────────────
         if (tableType === 'tarifas') {

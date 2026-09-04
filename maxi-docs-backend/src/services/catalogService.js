@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { monthlyFrom } from './rateCardService.js';
 
 const MONDAY_TOKEN    = process.env.MONDAY_API_TOKEN;
 const BOARD_ID        = process.env.MONDAY_CATALOG_BOARD_ID;
@@ -136,11 +137,15 @@ const TD = (txt, align = 'left', extra = '') =>
 const tblStart = `<table style="width:100%;border-collapse:collapse;margin:8px 0;font-family:Arial,sans-serif;border:1px solid #e5e7eb;">`;
 const footStyle = `border-top:2px solid ${TOTAL_C};`;
 
+// Cabecera navy de la propuesta LP — distinta del azul de la plantilla comercial
+const LP_HDR_BG = '#063B4A';
+const LP_ORANGE = '#F58220';
+
 /**
  * Genera el HTML estático de una tabla de cotización para el PDF.
  * @param {Array}  items     — items con campos según tableType
  * @param {number} ivaRate   — % de IVA
- * @param {string} tableType — 'renta' | 'traslados' | 'generic'
+ * @param {string} tableType — 'renta' | 'traslados' | 'tabulador' | 'adicionales' | 'generic'
  */
 export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') {
   if (!items?.length) return '';
@@ -149,6 +154,45 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
   const hdr = `background:#1B3055;color:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
 
   let headRow = '', bodyRows = '', subtotal = 0, colSpanTotal = 4;
+
+  // ── PROPUESTA LP: UNIDADES PROPUESTAS y COSTOS ADICIONALES/ADECUACIONES ──
+  // Las dos comparten las mismas 4 columnas visibles del diseño. Lo único que
+  // cambia es de dónde sale la mensualidad: del tabulador (dailyRate × 30) o
+  // de un precio mensual capturado a mano.
+  if (tableType === 'tabulador' || tableType === 'adicionales') {
+    const lpHdr = `background:${LP_HDR_BG};color:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
+    const LPTH  = (t, a = 'left') =>
+      `<th style="padding:7px 10px;font-size:8pt;font-weight:700;letter-spacing:.4px;text-align:${a};white-space:nowrap;${lpHdr}">${t}</th>`;
+
+    headRow = `<tr>${LPTH('CANT.','center')}${LPTH('UNIDAD')}${LPTH('ESPECIFICACIONES')}${LPTH('MENSUALIDAD SIN IVA','right')}</tr>`;
+
+    bodyRows = items.map(i => {
+      const qty = Number(i.quantity) || 1;
+      // El tabulador cotiza tarifa diaria; los adicionales, precio mensual directo.
+      const mensual = tableType === 'tabulador'
+        ? monthlyFrom(i.dailyRate, qty)
+        : (Number(i.price) || 0) * qty;
+      subtotal += mensual;
+      // Sin tarifa de tabla (13+ meses) — se escala a Dirección Comercial y no
+      // se imprime un importe que no existe.
+      const importe = (tableType === 'tabulador' && i.tramo === '13+')
+        ? '<span style="color:#607078;font-style:italic;">Ver con Dirección Comercial</span>'
+        : fmt(mensual);
+      return `<tr>
+        ${TD(qty,'center')}
+        ${TD(i.name || '')}
+        ${TD(i.specs || '','left','color:#607078;font-size:8.5pt;')}
+        ${TD(importe,'right',`font-weight:700;color:${LP_HDR_BG};`)}
+      </tr>`;
+    }).join('');
+
+    // El total consolidado vive en el hero (tipo "resumen"), no aquí — repetirlo
+    // por tabla contradiría el diseño, que muestra un solo importe global.
+    return `${tblStart}
+      <thead>${headRow}</thead>
+      <tbody>${bodyRows}</tbody>
+    </table>`;
+  }
 
   if (tableType === 'tarifas') {
     headRow = `<tr style="${hdr}">${TH('TIPO DE UNIDAD')}${TH('CANT.','center')}${TH('DEDUCIBLE','center')}${TH('RENTA DIARIA','right')}${TH('RENTA MENSUAL','right')}${TH('ENTREGA','right')}${TH('RECOLECCIÓN','right')}</tr>`;
