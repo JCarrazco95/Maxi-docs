@@ -481,6 +481,8 @@ const WysiwygEditor = forwardRef(function WysiwygEditor({ value, onChange, onAID
           {ptPickerOpen && (
             <div className="pt-type-picker">
               {[
+                { type: 'tabulador',     icon: '📊', label: 'Tabulador',     desc: 'Grupo · Plazo → tarifa del tabulador · Mensualidad' },
+                { type: 'adicionales',   icon: '➕', label: 'Adicionales',   desc: 'Unidad · Especificaciones · Mensualidad sin IVA' },
                 { type: 'renta',         icon: '🚗', label: 'Renta',         desc: 'Tarifa diaria · Mensual · Deducible · Días' },
                 { type: 'traslados',     icon: '🔄', label: 'Traslados',     desc: 'Traslado · Entrega · Recolección' },
                 { type: 'accesorios',    icon: '🔧', label: 'Accesorios',    desc: 'Accesorio / Servicio · Subtotal' },
