@@ -36,7 +36,7 @@ function embedLocalImages(html) {
 function parseAllTables(html) {
   // Extrae todos los pricing-table del HTML para calcular los totales de los
   // tipos auto-calculados: "acuerdo" (plantilla comercial) y "resumen" (LP).
-  const tables = { tarifas: [], accesorios: [], tabulador: [], adicionales: [] }
+  const tables = { tarifas: [], accesorios: [], tabulador: [], adicionales: [], costos: [] }
   const re = /<pricing-table([^>]*)><\/pricing-table>/g
   let m
   while ((m = re.exec(html)) !== null) {
@@ -74,7 +74,7 @@ export function processPricingTableNodes(html) {
   // y por lo tanto no aportan al total.
   const totalTabulador = allTables.tabulador.reduce(
     (s,i) => s + monthlyFrom(i.dailyRate, i.quantity), 0)
-  const totalAdicional = allTables.adicionales.reduce(
+  const totalAdicional = [...allTables.adicionales, ...allTables.costos].reduce(
     (s,i) => s + (Number(i.price)||0)*(Number(i.quantity)||1), 0)
   const unidadesCount  = allTables.tabulador.reduce(
     (s,i) => s + (Number(i.quantity)||1), 0)
@@ -168,7 +168,7 @@ export function processPricingTableNodes(html) {
 
         // ── TABLAS DE LA PROPUESTA LP ──────────────────────────────
         // Título alineado a la izquierda en navy, como el diseño de cotizacion_LP.
-        if (tableType === 'tabulador' || tableType === 'adicionales') {
+        if (tableType === 'tabulador' || tableType === 'adicionales' || tableType === 'costos') {
           return `<div style="margin:16px 0 4px;">
             <div style="font-weight:800;font-size:9.5pt;color:#063B4A;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;">${title}</div>
             ${buildPricingTableHtml(items, ivaRate, tableType)}

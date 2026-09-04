@@ -159,7 +159,7 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
   // Las dos comparten las mismas 4 columnas visibles del diseño. Lo único que
   // cambia es de dónde sale la mensualidad: del tabulador (dailyRate × 30) o
   // de un precio mensual capturado a mano.
-  if (tableType === 'tabulador' || tableType === 'adicionales') {
+  if (tableType === 'tabulador' || tableType === 'adicionales' || tableType === 'costos') {
     const lpHdr = `background:${LP_HDR_BG};color:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
     const LPTH  = (t, a = 'left') =>
       `<th style="padding:7px 10px;font-size:8pt;font-weight:700;letter-spacing:.4px;text-align:${a};white-space:nowrap;${lpHdr}">${t}</th>`;
