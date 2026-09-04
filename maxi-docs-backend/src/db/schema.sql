@@ -374,3 +374,47 @@ CREATE INDEX IF NOT EXISTS idx_cat_prod_category ON catalog_products(category_id
 CREATE OR REPLACE TRIGGER set_catalog_products_updated_at
   BEFORE UPDATE ON catalog_products
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- =================================================================
+-- RATE_CARDS — Tabulador de tarifas por plazo (vigencia semestral)
+-- Una tarjeta = una tabla vigente, p. ej. "NN Tarifas S2 2026".
+-- =================================================================
+CREATE TABLE IF NOT EXISTS rate_cards (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  monday_account_id VARCHAR(100) NOT NULL,
+  name              VARCHAR(255) NOT NULL,
+  valid_from        DATE,
+  valid_to          DATE,
+  notes             TEXT,
+  active            BOOLEAN DEFAULT true,
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_cards_account ON rate_cards(monday_account_id, active);
+
+CREATE OR REPLACE TRIGGER rate_cards_updated_at
+  BEFORE UPDATE ON rate_cards
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- =================================================================
+-- RATE_CARD_ROWS — Una fila por grupo de vehículo.
+-- Las tarifas son DIARIAS por placa, antes de IVA. La mensualidad se
+-- deriva con monthlyFrom() en rateCardService.js — no se guarda.
+-- 13+ meses no tiene columna: no hay tarifa de tabla, se escala a
+-- Dirección Comercial.
+-- =================================================================
+CREATE TABLE IF NOT EXISTS rate_card_rows (
+  id           SERIAL PRIMARY KEY,
+  rate_card_id UUID NOT NULL REFERENCES rate_cards(id) ON DELETE CASCADE,
+  grupo        VARCHAR(60) NOT NULL,
+  label        VARCHAR(120),
+  precio_hoy   NUMERIC(12,2),
+  tramo_1_3    NUMERIC(12,2),
+  tramo_4_6    NUMERIC(12,2),
+  tramo_7_12   NUMERIC(12,2),
+  sort_order   INTEGER DEFAULT 0,
+  UNIQUE (rate_card_id, grupo)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_card_rows_card ON rate_card_rows(rate_card_id);

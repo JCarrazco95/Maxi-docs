@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db/connection.js';
 import { extractVariables, generateThumbnail, wrapDocumentHtml } from '../services/pdfService.js';
+import { SEED_TEMPLATES } from '../templates/seedTemplates.js';
 
 // Genera thumbnail en background sin bloquear la respuesta
 async function scheduleThumbnail(templateId, contentHtml) {
@@ -94,177 +95,60 @@ router.put('/:id', async (req, res) => {
   res.json(tpl);
 });
 
-// POST /api/templates/seed — crea o actualiza la plantilla MAXIRent (idempotente)
+// POST /api/templates/seed — crea o actualiza las plantillas oficiales (idempotente)
+// Se llama en cada carga de la pestaña Plantillas, así que sobrescribe el
+// contenido de las plantillas sembradas. El HTML vive en templates/seedTemplates.js.
 router.post('/seed', async (req, res) => {
   const { accountId, userId } = req.mondayContext;
-  const TPL_NAME = 'Propuesta Comercial MAXIRent';
 
-  // Renombrar v2 → sin v2
+  // Renombrar v2 → sin v2 (arrastre de una versión vieja)
   await query(
     `UPDATE templates SET name = $1 WHERE monday_account_id = $2 AND name = 'Propuesta Comercial MAXIRent v2'`,
-    [TPL_NAME, accountId]
+    ['Propuesta Comercial MAXIRent', accountId]
   ).catch(() => {});
 
-  // Eliminar duplicados — dejar solo el más reciente
-  await query(
-    `DELETE FROM templates WHERE monday_account_id = $1 AND name = $2
-     AND id NOT IN (
-       SELECT id FROM templates WHERE monday_account_id = $1 AND name = $2
-       ORDER BY created_at DESC LIMIT 1
-     )`,
-    [accountId, TPL_NAME]
-  ).catch(() => {});
+  const results = [];
 
-  const content_html = `<style>
-  @page { margin: 0; }
-  html, body { margin: 0 !important; padding: 0 !important; }
-  .mr, .mr * { box-sizing: border-box; }
-  .mr { font-family: Arial, Helvetica, sans-serif; font-size:9.5pt; color:#222; }
-  /* ── Layout por página: márgenes manejados en CSS, @page anula los de Puppeteer ── */
-  .mr-page {
-    display: flex;
-    flex-direction: column;
-    min-height: 296mm;
-  }
-  .mr-page-content { flex: 1; padding: 0 15mm; }
-  /* ── Full-bleed: 100% del ancho físico del A4 ── */
-  .mr-full-bleed {
-    display: block;
-    width: 100%;
-  }
-  /* Header pegado al borde superior */
-  .mr-page-header { margin-bottom: 6px; }
-  /* Footer empujado al borde inferior */
-  .mr-page-footer { margin-top: auto; }
-  /* Página publicitaria: imagen A4 completa */
-  .mr-ad-page {
-    page-break-before: always;
-    height: 296mm;
-    width: 100%;
-    overflow: hidden;
-  }
-  .mr-ad-page img { display:block; width:100%; height:100%; object-fit:cover; }
-  .mr-header-info { display:flex; justify-content:space-between; align-items:flex-start; margin:0 0 10px; font-size:9.5pt; }
-  .mr-bold { font-weight:700; }
-  .mr-intro { font-size:9.5pt; line-height:1.55; margin:10px 0 14px; text-align:justify; }
-  .mr-obs-label { font-size:9pt; font-weight:700; margin:10px 0 3px; }
-  .mr-obs { border:1px solid #ccc; padding:8px 10px; font-size:9pt; min-height:30px; margin:0 0 14px; border-radius:2px; line-height:1.5; }
-  .mr-firma-box { border:2px dashed #555; width:220px; height:72px; margin:18px 0; border-radius:4px; }
-  .mr-nota { font-size:8pt; color:#444; text-decoration:underline; margin-top:18px; line-height:1.5; }
-  .mr-h3 { color:#1B3055; font-size:10pt; font-weight:700; margin:14px 0 5px; }
-  .mr-h4 { color:#F5A000; font-size:10pt; font-weight:700; margin:12px 0 4px; }
-  .mr-ul { margin:4px 0 10px; padding-left:18px; font-size:9pt; line-height:1.6; }
-  .mr-check { list-style:none; padding:0; margin:4px 0 10px; font-size:9pt; }
-  .mr-check li::before { content:"✓ "; color:#1B3055; font-weight:700; }
-  .mr-rep { text-align:right; margin-top:20px; font-size:9.5pt; line-height:1.7; }
-  .pt-header { background:#F5A000 !important; }
-  .pt-header .pt-title { color:white !important; }
-</style>
-<div class="mr">
+  for (const tpl of SEED_TEMPLATES) {
+    // Eliminar duplicados de esta plantilla — dejar solo el más reciente
+    await query(
+      `DELETE FROM templates WHERE monday_account_id = $1 AND name = $2
+       AND id NOT IN (
+         SELECT id FROM templates WHERE monday_account_id = $1 AND name = $2
+         ORDER BY created_at DESC LIMIT 1
+       )`,
+      [accountId, tpl.name]
+    ).catch(() => {});
 
-<!-- ══════ PÁGINA 1 ══════ -->
-<div class="mr-page">
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-01.png" class="mr-full-bleed mr-page-header" />
-  <div class="mr-page-content">
-    <div class="mr-header-info">
-      <div>
-        <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{razon_social}}</p>
-        <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{name}}</p>
-      </div>
-      <div style="text-align:right;">
-        <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{fecha}}</p>
-        <p style="margin:3px 0;"><span class="mr-bold">Fecha de vigencia </span>{{fecha_vigencia}}</p>
-      </div>
-    </div>
-    <p class="mr-intro">Presentamos una solución integral para la renta y administración de flota vehicular.</p>
-    <pricing-table data-title="TARIFAS" data-table-type="tarifas" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
-    <p class="mr-obs-label">Observaciones:</p>
-    <div class="mr-obs">Se requiere Pago por anticipado 30 días, garantía de 30 días + Firma de contrato + Firma pagaré</div>
-    <pricing-table data-title="ADECUACIONES" data-table-type="accesorios" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
-    <pricing-table data-title="VALOR DEL ACUERDO INICIAL" data-table-type="acuerdo" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
-    <h3 class="mr-h3">Condiciones comerciales</h3>
-    <ul class="mr-ul">
-      <li>Tarifas de rentas, traslados y/o adecuaciones son más IVA</li>
-      <li>Seguro con deducible del 0% o el 10% acorde a la tarifa pactada</li>
-      <li>Pago anticipado mensual (30 días) y meses subsecuentes</li>
-      <li>Los accesorios pasan a ser propiedad del cliente</li>
-    </ul>
-    <div class="mr-firma-box"></div>
-    <p class="mr-nota">**Nota: La firma no implica compromiso de compra. Vigencia 15 días.</p>
-  </div>
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" class="mr-full-bleed mr-page-footer" />
-</div>
+    const variables = extractVariables(tpl.content_html);
 
-<!-- ══════ PÁGINA 2 ══════ -->
-<div class="mr-page" style="page-break-before:always; padding-top:15mm;">
-  <div class="mr-page-content">
-    <h3 class="mr-h3">Requisitos para entrega de unidades</h3>
-    <ul class="mr-ul">
-      <li>Cubrir primer mes de renta y costo por entrega</li>
-      <li>Retención de Garantía de 30 días de renta</li>
-      <li>Firma de contrato, Carta Cobertura y pagaré</li>
-    </ul>
-    <h3 class="mr-h3">SERVICIOS BÁSICOS INCLUIDOS</h3>
-    <ul class="mr-ul">
-      <li>Kilometraje libre en cualquier parte de la república mexicana</li>
-      <li>Cambio llantas sin costo llegando a los 60,000 km</li>
-      <li>Mantenimientos correctivos y preventivos</li>
-      <li>Seguro de auto con cobertura a terceros</li>
-      <li>GPS en cada vehículo con cuenta espejo</li>
-    </ul>
-    <h3 class="mr-h3">Beneficios para su empresa</h3>
-    <ul class="mr-check">
-      <li><strong style="color:#1B3055;">Flota siempre</strong> disponible y operativa</li>
-      <li><strong style="color:#1B3055;">Evitas</strong> costos imprevistos</li>
-      <li><strong style="color:#1B3055;">Sin inversión</strong> en compra de vehículos</li>
-      <li><strong style="color:#1B3055;">Control</strong> y visibilidad total de sus operadores</li>
-    </ul>
-    <div class="mr-rep">
-      <p style="margin:2px 0;font-weight:700;">{{ejecutivo}}</p>
-      <p style="margin:2px 0;">Ejecutivo Comercial</p>
-      <p style="margin:2px 0;">{{correo_electronico}}</p>
-    </div>
-  </div>
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" class="mr-full-bleed mr-page-footer" />
-</div>
-
-<!-- ══════ PÁGINA 3 — PUBLICITARIA (full A4) ══════ -->
-<div class="mr-ad-page">
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-02.png" alt="MAXIRent — propuesta de valor" />
-</div>
-
-</div>`;
-
-  const variables = extractVariables(content_html);
-  const desc = 'Plantilla oficial MAXIRent — TARIFAS, ADECUACIONES y VALOR DEL ACUERDO';
-
-  // Verificar si ya existe
-  const existing = await query(
-    `SELECT id FROM templates WHERE monday_account_id = $1 AND name = $2`,
-    [accountId, TPL_NAME]
-  );
-
-  let tpl;
-  if (existing.rows.length > 0) {
-    // Actualizar contenido
-    const upd = await query(
-      `UPDATE templates SET content_html = $1, variables = $2, description = $3, updated_at = NOW()
-       WHERE id = $4 RETURNING *`,
-      [content_html, JSON.stringify(variables), desc, existing.rows[0].id]
+    const existing = await query(
+      `SELECT id FROM templates WHERE monday_account_id = $1 AND name = $2`,
+      [accountId, tpl.name]
     );
-    tpl = upd.rows[0];
-  } else {
-    // Insertar nueva
-    const ins = await query(
-      `INSERT INTO templates (name, description, content_html, variables, monday_user_id, monday_account_id)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [TPL_NAME, desc, content_html, JSON.stringify(variables), userId, accountId]
-    );
-    tpl = ins.rows[0];
+
+    let row;
+    if (existing.rows.length > 0) {
+      const upd = await query(
+        `UPDATE templates SET content_html = $1, variables = $2, description = $3, updated_at = NOW()
+         WHERE id = $4 RETURNING *`,
+        [tpl.content_html, JSON.stringify(variables), tpl.description, existing.rows[0].id]
+      );
+      row = upd.rows[0];
+    } else {
+      const ins = await query(
+        `INSERT INTO templates (name, description, content_html, variables, monday_user_id, monday_account_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [tpl.name, tpl.description, tpl.content_html, JSON.stringify(variables), userId, accountId]
+      );
+      row = ins.rows[0];
+    }
+
+    if (row) scheduleThumbnail(row.id, tpl.content_html);
+    results.push({ name: tpl.name, id: row?.id });
   }
 
-  if (tpl) scheduleThumbnail(tpl.id, content_html);
-  res.json({ ok: true, message: 'Plantilla actualizada' });
+  res.json({ ok: true, templates: results, message: `${results.length} plantilla(s) actualizada(s)` });
 });
 
 // POST /api/templates/migrate-dev — copia las plantillas de 'dev' a la cuenta real

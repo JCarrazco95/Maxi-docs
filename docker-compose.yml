@@ -1,0 +1,58 @@
+# Entorno LOCAL de MaxiDocs. Producción se despliega aparte con el Dockerfile.
+#
+# Las credenciales de Postgres viven en el .env de la raíz (gitignoreado) y se
+# derivan de DATABASE_URL en maxi-docs-backend/.env — los dos deben coincidir.
+#
+# Levantar:   docker compose up -d
+# Reconstruir: docker compose up -d --build
+#
+# Ojo: node --watch NO detecta cambios a través del bind mount en Windows.
+# Tras editar el backend hay que reiniciar: docker compose restart backend
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./maxi-docs-backend
+    # El .env del backend manda: ahí vive MONDAY_API_TOKEN. No declarar aquí
+    # esa variable — si se declara vacía, dotenv no la sobreescribe y el
+    # catálogo de Monday queda deshabilitado sin explicación.
+    env_file:
+      - ./maxi-docs-backend/.env
+    environment:
+      # Dentro del contenedor Postgres es el servicio "postgres", no localhost.
+      # En maxi-docs-backend/.env DATABASE_URL apunta a localhost:5433 porque
+      # así lo necesitan los scripts que se corren desde el host
+      # (scripts/backup-db.mjs). Este override reconcilia ambos.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "3001:3001"
+    volumes:
+      # El código se monta para poder editar sin reconstruir la imagen.
+      - ./maxi-docs-backend:/app
+      # node_modules vive en el contenedor: los binarios de Linux no sirven
+      # en el host y viceversa.
+      - backend_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # migrate.js es idempotente; se ejecuta en cada arranque.
+    command: sh -c "node src/db/migrate.js && npm run dev"
+
+volumes:
+  pgdata:
+  backend_node_modules:

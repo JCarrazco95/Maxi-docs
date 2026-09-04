@@ -4,6 +4,7 @@ import { query } from '../db/connection.js';
 import { fillTemplate, applyVariables, generatePdf, generateThumbnail, wrapDocumentHtml, processPricingTableNodes } from '../services/pdfService.js';
 import { uploadPdf, buildPdfKey, uploadFile, buildAttachmentKey, deleteFile } from '../services/storageService.js';
 import { buildPricingTableHtml } from '../services/catalogService.js';
+import { monthlyFrom, minTramo, tramoById } from '../services/rateCardService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { logEvent, hashPdfFile } from '../services/auditService.js';
 
@@ -84,6 +85,12 @@ function extractPricingTotal(html) {
           subtotalTarifas += mensual * (1 + deduc) + delivery + retrieval;
         } else if (tableType === 'accesorios') {
           subtotalAcc += (Number(i.price) || 0) * qty;
+        } else if (tableType === 'tabulador') {
+          // Propuesta LP: mensualidad del tabulador. Sin deducible — ese campo
+          // no existe en este tipo de tabla.
+          subtotalTarifas += monthlyFrom(i.dailyRate, qty);
+        } else if (tableType === 'adicionales') {
+          subtotalAcc += (Number(i.price) || 0) * qty;
         }
       }
     } catch (e) {
@@ -115,7 +122,10 @@ export function extractQuoteValues(html) {
     unidades:           [],  // ['Hino 3.5 caja Seca', ...] — nombres de las unidades (sin duplicados)
     unidadesCount:      0,   // Cantidad total de unidades (suma de quantities)
     primeraUnidad:      '',  // Nombre de la primera unidad (por si solo se mapea una)
+    plazoMinimo:        '',  // Etiqueta del tramo más corto cotizado (solo plantilla LP)
   };
+
+  const tramosCotizados = [];
 
   const re = /<pricing-table([^>]*?)(?:\s*\/?>|>)/gi;
   let m;
@@ -147,10 +157,27 @@ export function extractQuoteValues(html) {
           values.unidadesCount += qty;
         } else if (tableType === 'accesorios') {
           values.subtotalAdecuaciones += (Number(i.price) || 0) * qty;
+        } else if (tableType === 'tabulador') {
+          // Propuesta LP — las unidades se cotizan contra el tabulador.
+          // Sin entrega/recolección: ese costo va en COSTOS ADICIONALES.
+          const mensual = monthlyFrom(i.dailyRate, qty);
+          values.rentaMensual    += mensual;
+          values.subtotalTarifas += mensual;
+          if (i.name) {
+            values.unidades.push(i.name);
+            if (!values.primeraUnidad) values.primeraUnidad = i.name;
+          }
+          values.unidadesCount += qty;
+          if (i.tramo) tramosCotizados.push(i.tramo);
+        } else if (tableType === 'adicionales') {
+          values.subtotalAdecuaciones += (Number(i.price) || 0) * qty;
         }
       }
     } catch { /* skip */ }
   }
+
+  const tramoMin = minTramo(tramosCotizados);
+  if (tramoMin) values.plazoMinimo = tramoById(tramoMin)?.label ?? tramoMin;
 
   values.unidades    = [...new Set(values.unidades)];
   values.totalSinIVA = Math.round(values.subtotalTarifas + values.subtotalAdecuaciones);
