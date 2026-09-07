@@ -242,7 +242,18 @@ const PROPUESTA_LP_HTML = `<style>
   /* ── Página 2: cierre ── */
   .lp-cta { background: #063B4A; border-radius: 6px; padding: 14px 24px 16px; margin-top: 12px; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .lp-cta-title { font-size: 14pt; font-weight: 800; color: #FFFFFF; margin-bottom: 5px; }
-  .lp-cta-body { font-size: 8.5pt; color: #C3D4DA; line-height: 1.45; }
+  .lp-cta-body { font-size: 8.5pt; color: #C3D4DA; line-height: 1.45; margin-bottom: 10px; }
+  /* ── Botones de confirmación — OCULTOS ─────────────────────────────
+     Se muestran cambiando este display a flex. Están ocultos porque aún no
+     se define a qué correo y a qué WhatsApp deben apuntar; el markup y los
+     enlaces quedan listos abajo para no rehacerlos.
+     Al reactivarlos, revisar a dónde apuntan: hoy usan {{correo_electronico}}
+     y {{telefono}} del ejecutivo que arma la cotización, no una cuenta fija
+     de la empresa. */
+  .lp-cta-btns { display: none; gap: 12px; justify-content: center; }
+  .lp-btn { display: block; padding: 10px 24px; border-radius: 4px; font-size: 9.5pt; font-weight: 700; text-decoration: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .lp-btn-orange { background: #F58220; color: #FFFFFF; }
+  .lp-btn-white { background: #FFFFFF; color: #063B4A; }
 
   /* ── Cabecera de las tablas de precios de esta plantilla ── */
   .pt-header { background: #063B4A !important; }
@@ -442,6 +453,10 @@ const PROPUESTA_LP_HTML = `<style>
     <div class="lp-cta">
       <div class="lp-cta-title">Tu flota puede estar operando en cuestión de días</div>
       <div class="lp-cta-body">Esta propuesta es válida hasta el {{fecha_vigencia}}. Confírmala y programamos la entrega en cuanto se complete la validación documental.</div>
+      <div class="lp-cta-btns">
+        <a class="lp-btn lp-btn-orange" href="mailto:{{correo_electronico}}?subject=Confirmo%20propuesta%20{{folio}}">Confirmar por correo</a>
+        <a class="lp-btn lp-btn-white" href="https://wa.me/52{{telefono}}">Confirmar por WhatsApp</a>
+      </div>
     </div>
 
   </div>
