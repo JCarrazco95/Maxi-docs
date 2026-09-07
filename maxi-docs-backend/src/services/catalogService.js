@@ -162,7 +162,12 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
   if (tableType === 'tabulador' || tableType === 'adicionales' || tableType === 'costos') {
     const lpHdr = `background:${LP_HDR_BG};color:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
     const LPTH  = (t, a = 'left') =>
-      `<th style="padding:7px 10px;font-size:8pt;font-weight:700;letter-spacing:.4px;text-align:${a};white-space:nowrap;${lpHdr}">${t}</th>`;
+      `<th style="padding:6px 10px;font-size:8pt;font-weight:700;letter-spacing:.4px;text-align:${a};white-space:nowrap;${lpHdr}">${t}</th>`;
+    // Celda propia: el TD compartido lo usan también las tablas de la plantilla
+    // vieja, y bajarle el padding ahí le cambiaría el alto a documentos que ya
+    // existen. Aquí se aprieta para que quepan más renglones en la página.
+    const LPTD  = (t, a = 'left', extra = '') =>
+      `<td style="padding:4px 10px;font-size:9pt;text-align:${a};${CELL_BR}${extra}">${t}</td>`;
 
     headRow = `<tr>${LPTH('CANT.','center')}${LPTH('UNIDAD')}${LPTH('ESPECIFICACIONES')}${LPTH('MENSUALIDAD SIN IVA','right')}</tr>`;
 
@@ -179,18 +184,28 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
         ? '<span style="color:#607078;font-style:italic;">Ver con Dirección Comercial</span>'
         : fmt(mensual);
       return `<tr>
-        ${TD(qty,'center')}
-        ${TD(i.name || '')}
-        ${TD(i.specs || '','left','color:#607078;font-size:8.5pt;')}
-        ${TD(importe,'right',`font-weight:700;color:${LP_HDR_BG};`)}
+        ${LPTD(qty,'center')}
+        ${LPTD(i.name || '')}
+        ${LPTD(i.specs || '','left','color:#607078;font-size:8.5pt;')}
+        ${LPTD(importe,'right',`font-weight:700;color:${LP_HDR_BG};`)}
       </tr>`;
     }).join('');
 
-    // El total consolidado vive en el hero (tipo "resumen"), no aquí — repetirlo
-    // por tabla contradiría el diseño, que muestra un solo importe global.
+    // UNIDADES PROPUESTAS no lleva total propio: su suma ES la mensualidad del
+    // hero y repetirla sería decir el mismo número dos veces. Costos
+    // adicionales y adecuaciones sí, porque no entran en ese total y si no el
+    // cliente no tiene de dónde leer cuánto suman.
+    const pie = tableType === 'tabulador' ? '' : `<tfoot>
+        <tr style="border-top:2px solid ${LP_ORANGE};">
+          <td colspan="3" style="text-align:right;padding:5px 10px;font-weight:800;font-size:9pt;color:${LP_HDR_BG};">TOTAL</td>
+          <td style="text-align:right;padding:5px 10px;font-weight:900;font-size:10.5pt;color:${LP_HDR_BG};">${fmt(subtotal)}</td>
+        </tr>
+      </tfoot>`;
+
     return `${tblStart}
       <thead>${headRow}</thead>
       <tbody>${bodyRows}</tbody>
+      ${pie}
     </table>`;
   }
 

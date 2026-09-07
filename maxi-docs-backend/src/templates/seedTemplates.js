@@ -170,14 +170,14 @@ const PROPUESTA_LP_HTML = `<style>
   .lp-page-footer { margin-top: auto; }
 
   /* ── Títulos ── */
-  .lp-title { font-size: 23pt; font-weight: 800; color: #063B4A; letter-spacing: -0.4px; margin: 8px 0 3px; }
-  .lp-subtitle { font-size: 10pt; color: #607078; margin-bottom: 12px; }
+  .lp-title { font-size: 23pt; font-weight: 800; color: #063B4A; letter-spacing: -0.4px; margin: 6px 0 2px; }
+  .lp-subtitle { font-size: 10pt; color: #607078; margin-bottom: 9px; }
   .lp-h2 { font-size: 10pt; font-weight: 800; color: #063B4A; letter-spacing: 0.6px; text-transform: uppercase; margin: 10px 0 5px; }
   .lp-h2-orange { color: #F58220; }
 
   /* ── Tarjetas de folio / fecha / vigencia ── */
-  .lp-meta { display: flex; gap: 10px; margin-bottom: 14px; }
-  .lp-meta-card { flex: 1; border: 1px solid #D7E4E8; border-left: 3px solid #F58220; border-radius: 4px; padding: 8px 12px; }
+  .lp-meta { display: flex; gap: 10px; margin-bottom: 10px; }
+  .lp-meta-card { flex: 1; border: 1px solid #D7E4E8; border-left: 3px solid #F58220; border-radius: 4px; padding: 6px 12px; }
   .lp-meta-label { font-size: 7pt; font-weight: 700; color: #607078; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 3px; }
   /* 10pt para que "10 de septiembre de 2026" quepa en una línea */
   .lp-meta-value { font-size: 10pt; font-weight: 800; color: #063B4A; }
@@ -188,18 +188,18 @@ const PROPUESTA_LP_HTML = `<style>
   .lp-hero-mascota { position: absolute; right: 8px; bottom: 0; width: 100px; display: block; }
 
   /* ── Tarjetas de condiciones ── */
-  .lp-cards { display: flex; gap: 10px; margin: 12px 0 4px; }
-  .lp-card { flex: 1; border: 1px solid #D7E4E8; border-radius: 5px; padding: 10px 14px; }
+  .lp-cards { display: flex; gap: 10px; margin: 9px 0 3px; }
+  .lp-card { flex: 1; border: 1px solid #D7E4E8; border-radius: 5px; padding: 8px 14px; }
   .lp-card-label { font-size: 8pt; font-weight: 700; color: #607078; letter-spacing: 0.7px; text-transform: uppercase; margin-bottom: 4px; }
   .lp-card-body { font-size: 9pt; color: #2B3A40; line-height: 1.45; }
   .lp-card-strong { font-size: 10.5pt; font-weight: 800; color: #063B4A; line-height: 1.3; }
 
   /* ── Siguiente paso ── */
-  .lp-steps { border: 1px solid #D7E4E8; border-radius: 6px; padding: 14px 18px 16px; margin-top: 18px; }
-  .lp-steps-title { font-size: 10pt; font-weight: 800; color: #063B4A; letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 12px; padding-left: 42px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 16'%3E%3Cpath d='M2 2l5 6-5 6M13 2l5 6-5 6M24 2l5 6-5 6' fill='none' stroke='%23F58220' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat left center/34px 12px; }
+  .lp-steps { border: 1px solid #D7E4E8; border-radius: 6px; padding: 10px 18px 12px; margin-top: 12px; }
+  .lp-steps-title { font-size: 10pt; font-weight: 800; color: #063B4A; letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 9px; padding-left: 42px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 16'%3E%3Cpath d='M2 2l5 6-5 6M13 2l5 6-5 6M24 2l5 6-5 6' fill='none' stroke='%23F58220' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat left center/34px 12px; }
   .lp-steps-row { display: flex; }
   .lp-step { flex: 1; text-align: center; }
-  .lp-step-num { width: 26px; height: 26px; border-radius: 50%; margin: 0 auto 7px; color: #FFFFFF; font-size: 10pt; font-weight: 800; line-height: 26px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .lp-step-num { width: 24px; height: 24px; border-radius: 50%; margin: 0 auto 5px; color: #FFFFFF; font-size: 10pt; font-weight: 800; line-height: 26px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .lp-step-navy { background: #063B4A; }
   .lp-step-orange { background: #F58220; }
   .lp-step-label { font-size: 8pt; color: #2B3A40; line-height: 1.35; }

@@ -974,12 +974,14 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
   // No tiene items propios: lee las tablas tabulador + adicionales del
   // documento, igual que hace 'acuerdo' con tarifas + accesorios.
   if (tableType === 'resumen') {
-    const tabItems = []
+    const tabItems = [], costItems = [], adecItems = []
     try {
       editor?.state.doc.descendants(n => {
         if (n.type.name !== 'pricingTable') return
         const its = decodeItems(n.attrs.itemsB64)
         if (n.attrs.tableType === 'tabulador')   tabItems.push(...its)
+        if (n.attrs.tableType === 'costos')      costItems.push(...its)
+        if (n.attrs.tableType === 'adicionales') adecItems.push(...its)
       })
     } catch { /* documento aún montándose — el hero se recalcula al siguiente update */ }
 
@@ -987,6 +989,10 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
     // Solo la renta de UNIDADES PROPUESTAS: los costos adicionales y las
     // adecuaciones se cotizan aparte y no entran en la mensualidad del hero.
     const monto    = totalTab
+    // No suman a la mensualidad, pero se muestran debajo para dar el panorama
+    const sumaPrecio = arr => arr.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||1), 0)
+    const totalCostos       = sumaPrecio(costItems)
+    const totalAdecuaciones = sumaPrecio(adecItems)
     const unidades = tabItems.reduce((s, i) => s + (Number(i.quantity)||1), 0)
     const plazoId  = minTramo(tabItems.map(i => i.tramo).filter(Boolean))
     const plazoTxt = plazoId ? `Plazo mínimo ${tramoById(plazoId)?.label ?? plazoId}` : 'Plazo por definir'
@@ -1016,6 +1022,21 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
               <div style={{ fontSize:10, fontWeight:700, color:'#F58220', letterSpacing:0.8, marginTop:4 }}>
                 IVA NO INCLUIDO
               </div>
+              {(totalCostos > 0 || totalAdecuaciones > 0) && (
+                <div style={{ marginTop:9, paddingTop:8, borderTop:'1px solid rgba(255,255,255,0.18)',
+                  fontSize:10, color:'#8FA8B2', lineHeight:1.65, textAlign:'left' }}>
+                  {totalCostos > 0 && (
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:14 }}>
+                      <span>Costos adicionales</span><span>{fmt(totalCostos)}</span>
+                    </div>
+                  )}
+                  {totalAdecuaciones > 0 && (
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:14 }}>
+                      <span>Adecuaciones</span><span>{fmt(totalAdecuaciones)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           {tabItems.length === 0 && (
