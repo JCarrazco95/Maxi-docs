@@ -14,6 +14,8 @@ $$ LANGUAGE plpgsql;
 
 -- ── Secuencia para folio único por cuenta ─────────────────────────
 CREATE SEQUENCE IF NOT EXISTS doc_number_seq START 1 INCREMENT 1;
+-- Serie propia de la propuesta LP: MRLP-0001, MRLP-0002…
+CREATE SEQUENCE IF NOT EXISTS doc_number_lp_seq START 1 INCREMENT 1;
 
 -- =================================================================
 -- WORKSPACES — Multi-workspace por cuenta
