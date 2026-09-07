@@ -974,19 +974,19 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
   // No tiene items propios: lee las tablas tabulador + adicionales del
   // documento, igual que hace 'acuerdo' con tarifas + accesorios.
   if (tableType === 'resumen') {
-    const tabItems = [], addItems = []
+    const tabItems = []
     try {
       editor?.state.doc.descendants(n => {
         if (n.type.name !== 'pricingTable') return
         const its = decodeItems(n.attrs.itemsB64)
         if (n.attrs.tableType === 'tabulador')   tabItems.push(...its)
-        if (n.attrs.tableType === 'adicionales' || n.attrs.tableType === 'costos') addItems.push(...its)
       })
     } catch { /* documento aún montándose — el hero se recalcula al siguiente update */ }
 
     const totalTab = tabItems.reduce((s, i) => s + monthlyFrom(i.dailyRate, i.quantity), 0)
-    const totalAdd = addItems.reduce((s, i) => s + (Number(i.price)||0) * (Number(i.quantity)||1), 0)
-    const monto    = totalTab + totalAdd
+    // Solo la renta de UNIDADES PROPUESTAS: los costos adicionales y las
+    // adecuaciones se cotizan aparte y no entran en la mensualidad del hero.
+    const monto    = totalTab
     const unidades = tabItems.reduce((s, i) => s + (Number(i.quantity)||1), 0)
     const plazoId  = minTramo(tabItems.map(i => i.tramo).filter(Boolean))
     const plazoTxt = plazoId ? `Plazo mínimo ${tramoById(plazoId)?.label ?? plazoId}` : 'Plazo por definir'
@@ -1018,10 +1018,10 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
               </div>
             </div>
           </div>
-          {tabItems.length === 0 && addItems.length === 0 && (
+          {tabItems.length === 0 && (
             <div style={{ background:'rgba(255,255,255,0.08)', color:'#C3D4DA', fontSize:11,
               padding:'7px 22px', textAlign:'center' }}>
-              Se calcula solo al llenar UNIDADES PROPUESTAS y COSTOS ADICIONALES
+              Se calcula solo al llenar UNIDADES PROPUESTAS
             </div>
           )}
         </div>
