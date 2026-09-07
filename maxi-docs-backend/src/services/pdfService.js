@@ -74,8 +74,7 @@ export function processPricingTableNodes(html) {
   // y por lo tanto no aportan al total.
   const totalTabulador = allTables.tabulador.reduce(
     (s,i) => s + monthlyFrom(i.dailyRate, i.quantity), 0)
-  const totalAdicional = [...allTables.adicionales, ...allTables.costos].reduce(
-    (s,i) => s + (Number(i.price)||0)*(Number(i.quantity)||1), 0)
+
   const unidadesCount  = allTables.tabulador.reduce(
     (s,i) => s + (Number(i.quantity)||1), 0)
   const plazoMinimo    = minTramo(allTables.tabulador.map(i => i.tramo).filter(Boolean))
@@ -103,11 +102,13 @@ export function processPricingTableNodes(html) {
         const tbl       = (head,body,foot='') => `<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;margin:4px 0;">${head}${body}${foot}</table>`
 
         // ── TIPO RESUMEN — hero de la propuesta LP, auto calculado ──
-        // No tiene items propios: lee las tablas tabulador + adicionales del
-        // documento. Se renderiza siempre, aunque esté en cero, porque es el
+        // No tiene items propios: lee la tabla tabulador del documento. Se
+        // renderiza siempre, aunque esté en cero, porque es el
         // encabezado visual de la propuesta y su ausencia rompería el layout.
         if (tableType === 'resumen') {
-          const montoTotal = totalTabulador + totalAdicional
+          // Solo la renta de UNIDADES PROPUESTAS. Los costos adicionales y las
+          // adecuaciones se cotizan aparte y no entran en la mensualidad del hero.
+          const montoTotal = totalTabulador
           const unidadesTxt = unidadesCount === 1 ? '1 unidad' : `${unidadesCount} unidades`
           // Dos líneas deliberadas en vez de una sola que se parte sola: en un
           // A4 el ancho útil es ~182mm y "N unidades | Plazo mínimo X a Y meses"
