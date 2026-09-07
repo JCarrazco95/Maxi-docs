@@ -43,6 +43,44 @@ const COL_FOLIO          = 'text_mktmgv5z';       // Folio Pandadoc
 const COL_EMAIL          = 'email';               // Dirección de e-mail principal del contacto
 const COL_LEAD_RELATION  = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent (pulse ID del lead)
 
+/**
+ * Resuelve el folio de una cotización.
+ *
+ * La propuesta LP usa su propia serie MRLP-NNNN y REUTILIZA el folio entre
+ * cotizaciones del mismo item de Monday: a un cliente se le mandan varias
+ * versiones y todas deben llevar el mismo número, en vez de abrir un folio
+ * nuevo cada vez. La plantilla comercial conserva su comportamiento de
+ * siempre — una serie MR-{AÑO}-NNNN y un folio por documento.
+ *
+ * La plantilla se detecta por su contenido y no por el nombre: renombrarla
+ * desde la app no debe cambiar cómo se numera. La tabla "tabulador" solo
+ * existe en la propuesta LP.
+ */
+export async function resolverFolio({ srcHtml, accountId, mondayItemId, db = query }) {
+  const esLP = /data-table-type="tabulador"/.test(srcHtml ?? '');
+
+  if (!esLP) {
+    const seq = await db(`SELECT nextval('doc_number_seq') AS n`);
+    return `MR-${new Date().getFullYear()}-${String(seq.rows[0].n).padStart(4, '0')}`;
+  }
+
+  // Reusar el folio de la primera cotización LP de este item, si ya hubo una
+  if (mondayItemId) {
+    const previo = await db(
+      `SELECT doc_number FROM documents
+       WHERE monday_account_id = $1 AND monday_item_id = $2
+         AND doc_number LIKE 'MRLP-%'
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [accountId, String(mondayItemId)]
+    );
+    if (previo.rows[0]?.doc_number) return previo.rows[0].doc_number;
+  }
+
+  const seq = await db(`SELECT nextval('doc_number_lp_seq') AS n`);
+  return `MRLP-${String(seq.rows[0].n).padStart(4, '0')}`;
+}
+
 // Extrae el total de todas las tablas de precios en el HTML
 function extractPricingTotal(html) {
   if (!html) return 0;
@@ -555,14 +593,10 @@ router.post('/generate', requireEditor, async (req, res) => {
 
   // storedHtml = HTML para guardar en DB (variables reemplazadas, <pricing-table> intactos → re-editable)
   // filledHtml = HTML para PDF (variables + tablas expandidas para Puppeteer)
-  let storedHtml;
-  let filledHtml;
+  let srcHtml = content_html;                 // HTML de origen, sirve para saber qué plantilla es
+  const datosParaLlenar = { ...filled_data };
 
-  if (content_html) {
-    // Modo editor: el HTML ya viene con variables reemplazadas desde el cliente.
-    storedHtml = applyVariables(content_html, filled_data);   // preserva <pricing-table>
-    filledHtml = fillTemplate(content_html, filled_data);     // expande para PDF
-  } else {
+  if (!content_html) {
     // Modo clásico: cargar plantilla y reemplazar variables en el backend
     const templateResult = await query(
       `SELECT * FROM templates WHERE id = $1 AND monday_account_id = $2`,
@@ -571,13 +605,20 @@ router.post('/generate', requireEditor, async (req, res) => {
     const template = templateResult.rows[0];
     if (!template) return res.status(404).json({ error: 'Template not found' });
 
-    const enrichedData = { ...filled_data };
+    srcHtml = template.content_html;
     if (catalog_items.length > 0) {
-      enrichedData.tabla_renta = buildPricingTableHtml(catalog_items, catalog_iva);
+      datosParaLlenar.tabla_renta = buildPricingTableHtml(catalog_items, catalog_iva);
     }
-    storedHtml = applyVariables(template.content_html, enrichedData);  // preserva <pricing-table>
-    filledHtml = fillTemplate(template.content_html, enrichedData);    // expande para PDF
   }
+
+  // El folio se resuelve ANTES de llenar el HTML. applyVariables sustituye TODAS
+  // las {{variables}} y deja en blanco las que no traen valor, así que generarlo
+  // después dejaba la caja FOLIO de la propuesta siempre vacía.
+  const docNumber = await resolverFolio({ srcHtml, accountId, mondayItemId: monday_item_id });
+  datosParaLlenar.folio = docNumber;
+
+  const storedHtml = applyVariables(srcHtml, datosParaLlenar);   // preserva <pricing-table>
+  const filledHtml = fillTemplate(srcHtml, datosParaLlenar);     // expande para PDF
 
   const fullHtml = wrapDocumentHtml(filledHtml, name);
 
@@ -591,10 +632,6 @@ router.post('/generate', requireEditor, async (req, res) => {
 
   // Miniatura para el preview del correo — en background, no bloquea la respuesta
   scheduleDocumentThumbnail(documentId, fullHtml);
-
-  // 5. Generar folio único: MR-{AÑO}-{NNNN}
-  const seqRow = await query(`SELECT nextval('doc_number_seq') AS n`);
-  const docNumber = `MR-${new Date().getFullYear()}-${String(seqRow.rows[0].n).padStart(4, '0')}`;
 
   // 6. Crear item en Monday con columnas rellenas — no bloquea si falla
   // Para el item de Monday: nombre del lead (columna "Oportunidad") + razón
