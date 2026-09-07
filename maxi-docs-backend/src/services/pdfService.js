@@ -75,6 +75,13 @@ export function processPricingTableNodes(html) {
   const totalTabulador = allTables.tabulador.reduce(
     (s,i) => s + monthlyFrom(i.dailyRate, i.quantity), 0)
 
+  // Costos adicionales y adecuaciones NO entran en la mensualidad, pero se
+  // muestran bajo ella para que el cliente vea el panorama completo sin tener
+  // que ir a buscar cada tabla.
+  const sumaPrecio = arr => arr.reduce((s,i) => s + (Number(i.price)||0)*(Number(i.quantity)||1), 0)
+  const totalCostos       = sumaPrecio(allTables.costos)
+  const totalAdecuaciones = sumaPrecio(allTables.adicionales)
+
   const unidadesCount  = allTables.tabulador.reduce(
     (s,i) => s + (Number(i.quantity)||1), 0)
   const plazoMinimo    = minTramo(allTables.tabulador.map(i => i.tramo).filter(Boolean))
@@ -117,9 +124,18 @@ export function processPricingTableNodes(html) {
             ? `Plazo mínimo ${tramoById(plazoMinimo)?.label ?? plazoMinimo}`
             : 'Plazo por definir'
           const exact = '-webkit-print-color-adjust:exact;print-color-adjust:exact;'
+          // Solo se listan los conceptos que traen importe: una línea en cero
+          // no le dice nada al cliente y ensucia el bloque.
+          const linea = (etiqueta, monto) => monto > 0
+            ? `<div style="display:flex;justify-content:space-between;gap:14px;"><span>${etiqueta}</span><span>${fmt(monto)}</span></div>`
+            : ''
+          const filas = linea('Costos adicionales', totalCostos) + linea('Adecuaciones', totalAdecuaciones)
+          const desglose = filas
+            ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.18);font-size:7.5pt;color:#8FA8B2;line-height:1.5;text-align:left;">${filas}</div>`
+            : ''
           // padding-right en la columna derecha reserva el hueco de la mascota,
           // que la plantilla superpone con position:absolute.
-          return `<div style="background:#063B4A;border-left:6px solid #F58220;border-radius:5px;padding:18px 22px;margin:14px 0 4px;display:flex;align-items:center;${exact}">
+          return `<div style="background:#063B4A;border-left:6px solid #F58220;border-radius:5px;padding:14px 22px;margin:11px 0 3px;display:flex;align-items:center;${exact}">
             <div style="flex:1.15;padding-right:18px;">
               <div style="font-size:8pt;font-weight:700;color:#F58220;letter-spacing:1px;text-transform:uppercase;margin-bottom:7px;">Tu solución en una mirada</div>
               <div style="font-size:15pt;font-weight:800;color:#FFFFFF;line-height:1.2;">${unidadesTxt}</div>
@@ -130,6 +146,7 @@ export function processPricingTableNodes(html) {
               <div style="font-size:8pt;font-weight:700;color:#FFFFFF;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Mensualidad total</div>
               <div style="font-size:21pt;font-weight:900;color:#FFFFFF;line-height:1.1;white-space:nowrap;">${fmt(montoTotal)}</div>
               <div style="font-size:8pt;font-weight:700;color:#F58220;letter-spacing:0.8px;margin-top:4px;">IVA NO INCLUIDO</div>
+              ${desglose}
             </div>
           </div>`
         }
@@ -170,8 +187,8 @@ export function processPricingTableNodes(html) {
         // ── TABLAS DE LA PROPUESTA LP ──────────────────────────────
         // Título alineado a la izquierda en navy, como el diseño de cotizacion_LP.
         if (tableType === 'tabulador' || tableType === 'adicionales' || tableType === 'costos') {
-          return `<div style="margin:16px 0 4px;">
-            <div style="font-weight:800;font-size:9.5pt;color:#063B4A;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;">${title}</div>
+          return `<div style="margin:11px 0 3px;">
+            <div style="font-weight:800;font-size:9.5pt;color:#063B4A;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px;">${title}</div>
             ${buildPricingTableHtml(items, ivaRate, tableType)}
           </div>`
         }
