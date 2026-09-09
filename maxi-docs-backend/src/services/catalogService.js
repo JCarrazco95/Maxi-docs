@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { monthlyFrom } from './rateCardService.js';
+import { monthlyFrom, tramoById } from './rateCardService.js';
 
 const MONDAY_TOKEN    = process.env.MONDAY_API_TOKEN;
 const BOARD_ID        = process.env.MONDAY_CATALOG_BOARD_ID;
@@ -156,9 +156,10 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
   let headRow = '', bodyRows = '', subtotal = 0, colSpanTotal = 4;
 
   // ── PROPUESTA LP: UNIDADES PROPUESTAS y COSTOS ADICIONALES/ADECUACIONES ──
-  // Las dos comparten las mismas 4 columnas visibles del diseño. Lo único que
-  // cambia es de dónde sale la mensualidad: del tabulador (dailyRate × 30) o
-  // de un precio mensual capturado a mano.
+  // Comparten estructura; cambia de dónde sale la mensualidad (del tabulador,
+  // dailyRate × 30, o de un precio mensual capturado a mano) y que UNIDADES
+  // PROPUESTAS lleva además la columna PLAZO: el precio depende del plazo
+  // contratado y el cliente necesita ver a qué plazo corresponde lo cotizado.
   if (tableType === 'tabulador' || tableType === 'adicionales' || tableType === 'costos') {
     const lpHdr = `background:${LP_HDR_BG};color:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
     const LPTH  = (t, a = 'left') =>
@@ -169,7 +170,11 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
     const LPTD  = (t, a = 'left', extra = '') =>
       `<td style="padding:4px 10px;font-size:9pt;text-align:${a};${CELL_BR}${extra}">${t}</td>`;
 
-    headRow = `<tr>${LPTH('CANT.','center')}${LPTH('UNIDAD')}${LPTH('ESPECIFICACIONES')}${LPTH('MENSUALIDAD SIN IVA','right')}</tr>`;
+    const conPlazo = tableType === 'tabulador';
+
+    headRow = `<tr>${LPTH('CANT.','center')}${LPTH('UNIDAD')}${LPTH('ESPECIFICACIONES')}`
+      + (conPlazo ? LPTH('PLAZO','center') : '')
+      + `${LPTH('MENSUALIDAD SIN IVA','right')}</tr>`;
 
     bodyRows = items.map(i => {
       const qty = Number(i.quantity) || 1;
@@ -183,10 +188,16 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
       const importe = (tableType === 'tabulador' && i.tramo === '13+')
         ? '<span style="color:#607078;font-style:italic;">Ver con Dirección Comercial</span>'
         : fmt(mensual);
+      // El plazo se guarda como id ('4-6'); al cliente se le muestra su
+      // etiqueta ('4 a 6 meses'). Si la fila aún no tiene plazo, un guion.
+      const plazo = conPlazo
+        ? LPTD(tramoById(i.tramo)?.label ?? '—', 'center', 'white-space:nowrap;')
+        : '';
       return `<tr>
         ${LPTD(qty,'center')}
         ${LPTD(i.name || '')}
         ${LPTD(i.specs || '','left','color:#607078;font-size:8.5pt;')}
+        ${plazo}
         ${LPTD(importe,'right',`font-weight:700;color:${LP_HDR_BG};`)}
       </tr>`;
     }).join('');
