@@ -206,7 +206,7 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
 
     } else {
       const conPlazo = tableType === 'tabulador';
-      const etiquetaImporte = conPlazo ? 'RENTA MENSUAL SIN IVA' : 'IMPORTE ÚNICO SIN IVA';
+      const etiquetaImporte = conPlazo ? 'RENTA MENSUAL SIN IVA' : 'COSTO SIN IVA';
       columnas = ['CANT.', 'UNIDAD', 'ESPECIFICACIONES', ...(conPlazo ? ['PLAZO'] : []), etiquetaImporte];
       headRow = `<tr>${LPTH('CANT.','center')}${LPTH('UNIDAD')}${LPTH('ESPECIFICACIONES')}`
         + (conPlazo ? LPTH('PLAZO','center') : '')

@@ -301,7 +301,7 @@ const PROPUESTA_LP_HTML = `<style>
     </div>
 
     <pricing-table data-title="UNIDADES PROPUESTAS" data-table-type="tabulador" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
-    <pricing-table data-title="COSTOS ADICIONALES" data-table-type="costos" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
+    <pricing-table data-title="SERVICIO DE TRASLADO" data-table-type="costos" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
     <pricing-table data-title="ADECUACIONES" data-table-type="adicionales" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
 
     <div class="lp-steps">

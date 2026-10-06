@@ -90,7 +90,7 @@ const COLS = {
   // 'traslados' porque ese tipo ya existe (la tabla de la plantilla vieja).
   // En el PDF solo se imprimen las 4 columnas del diseño.
   costos:     { grid: '52px 112px 126px 122px 1fr 124px 40px', headers: ['CANT.', 'ESTADO', 'MUNICIPIO', 'TIPO DE UNIDAD', 'CONCEPTO', 'COSTO SIN IVA', ''], align: ['center', 'left', 'left', 'left', 'left', 'right', 'center'] },
-  adicionales:{ grid: '58px 1.1fr 1.4fr 130px 40px', headers: ['CANT.', 'UNIDAD', 'ESPECIFICACIONES', 'MENSUALIDAD SIN IVA', ''], align: ['center', 'left', 'left', 'right', 'center'] },
+  adicionales:{ grid: '58px 1.1fr 1.4fr 130px 40px', headers: ['CANT.', 'UNIDAD', 'ESPECIFICACIONES', 'COSTO SIN IVA', ''], align: ['center', 'left', 'left', 'right', 'center'] },
   // Tipo de unidad más ancha (2fr), campos numéricos ajustados
   tarifas:    { grid: '2fr 60px 84px 116px 126px 104px 104px 40px', headers: ['TIPO DE UNIDAD', 'CANT.', 'DEDUCIBLE', 'RENTA DIARIA', 'RENTA MENSUAL', 'ENTREGA', 'RECOLECCIÓN', ''], align: ['left', 'center', 'center', 'right', 'right', 'right', 'right', 'center'] },
   // ADECUACIONES: sin DESC.%, columnas renombradas
@@ -1027,7 +1027,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
                   fontSize:10, color:'#8FA8B2', lineHeight:1.65, textAlign:'left' }}>
                   {totalCostos > 0 && (
                     <div style={{ display:'flex', justifyContent:'space-between', gap:14 }}>
-                      <span>Costos adicionales</span><span>{fmt(totalCostos)}</span>
+                      <span>Servicio de traslado</span><span>{fmt(totalCostos)}</span>
                     </div>
                   )}
                   {totalAdecuaciones > 0 && (

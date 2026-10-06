@@ -50,7 +50,7 @@ test('una fila de costos capturada a mano no deja celdas vacías', () => {
 test('solo el tabulador cobra por mes; lo demás es un pago único', () => {
   assert.ok(buildPricingTableHtml(unidades, 16, 'tabulador').includes('RENTA MENSUAL SIN IVA'));
   assert.ok(buildPricingTableHtml(traslados, 16, 'costos').includes('COSTO SIN IVA'));
-  assert.ok(buildPricingTableHtml(adicionales, 16, 'adicionales').includes('IMPORTE ÚNICO SIN IVA'));
+  assert.ok(buildPricingTableHtml(adicionales, 16, 'adicionales').includes('COSTO SIN IVA'));
   // Ninguna de las dos debe decir "mensualidad": no son cargos recurrentes
   for (const tipo of ['costos', 'adicionales']) {
     assert.ok(!buildPricingTableHtml(adicionales, 16, tipo).includes('MENSUALIDAD'), tipo);
@@ -83,7 +83,7 @@ test('13+ meses se escala a Dirección Comercial en vez de un importe', () => {
 
 test('ADECUACIONES conserva sus cuatro columnas, sin plazo', () => {
   const cols = encabezados(buildPricingTableHtml(adicionales, 16, 'adicionales'));
-  assert.deepEqual(cols, ['CANT.', 'UNIDAD', 'ESPECIFICACIONES', 'IMPORTE ÚNICO SIN IVA']);
+  assert.deepEqual(cols, ['CANT.', 'UNIDAD', 'ESPECIFICACIONES', 'COSTO SIN IVA']);
 });
 
 test('esas dos sí llevan TOTAL; unidades propuestas no, porque su suma es el hero', () => {
