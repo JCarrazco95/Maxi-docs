@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { monthlyFrom, tramoById } from './rateCardService.js';
+import { tipoTrasladoById } from './trasladosService.js';
 
 const MONDAY_TOKEN    = process.env.MONDAY_API_TOKEN;
 const BOARD_ID        = process.env.MONDAY_CATALOG_BOARD_ID;
@@ -155,52 +156,86 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
 
   let headRow = '', bodyRows = '', subtotal = 0, colSpanTotal = 4;
 
-  // ── PROPUESTA LP: UNIDADES PROPUESTAS y COSTOS ADICIONALES/ADECUACIONES ──
-  // Comparten estructura; cambia de dónde sale la mensualidad (del tabulador,
-  // dailyRate × 30, o de un precio mensual capturado a mano) y que UNIDADES
-  // PROPUESTAS lleva además la columna PLAZO: el precio depende del plazo
-  // contratado y el cliente necesita ver a qué plazo corresponde lo cotizado.
+  // ── TABLAS DE LA PROPUESTA LP ────────────────────────────────────────
+  // Las tres salen de aquí pero cada una muestra lo suyo:
+  //   tabulador   → la renta mensual, que depende del PLAZO contratado
+  //   costos      → el traslado desglosado: estado, municipio y tipo de unidad
+  //   adicionales → adecuaciones, un concepto y su importe
+  // Importante para el cliente: solo el tabulador cobra por mes. Traslados y
+  // adecuaciones son importes únicos, y la etiqueta de la columna lo dice.
   if (tableType === 'tabulador' || tableType === 'adicionales' || tableType === 'costos') {
     const lpHdr = `background:${LP_HDR_BG};color:white;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
     const LPTH  = (t, a = 'left') =>
-      `<th style="padding:6px 10px;font-size:8pt;font-weight:700;letter-spacing:.4px;text-align:${a};white-space:nowrap;${lpHdr}">${t}</th>`;
+      `<th style="padding:6px 8px;font-size:8pt;font-weight:700;letter-spacing:.4px;text-align:${a};white-space:nowrap;${lpHdr}">${t}</th>`;
     // Celda propia: el TD compartido lo usan también las tablas de la plantilla
     // vieja, y bajarle el padding ahí le cambiaría el alto a documentos que ya
     // existen. Aquí se aprieta para que quepan más renglones en la página.
     const LPTD  = (t, a = 'left', extra = '') =>
-      `<td style="padding:4px 10px;font-size:9pt;text-align:${a};${CELL_BR}${extra}">${t}</td>`;
+      `<td style="padding:4px 8px;font-size:9pt;text-align:${a};${CELL_BR}${extra}">${t}</td>`;
 
-    const conPlazo = tableType === 'tabulador';
+    const DASH   = '<span style="color:#9aa7ad;">—</span>';
+    const dato   = v => (String(v ?? '').trim() || DASH);
+    const importeStyle = `font-weight:700;color:${LP_HDR_BG};white-space:nowrap;`;
 
-    headRow = `<tr>${LPTH('CANT.','center')}${LPTH('UNIDAD')}${LPTH('ESPECIFICACIONES')}`
-      + (conPlazo ? LPTH('PLAZO','center') : '')
-      + `${LPTH('MENSUALIDAD SIN IVA','right')}</tr>`;
+    let columnas;
 
-    bodyRows = items.map(i => {
-      const qty = Number(i.quantity) || 1;
-      // El tabulador cotiza tarifa diaria; los adicionales, precio mensual directo.
-      const mensual = tableType === 'tabulador'
-        ? monthlyFrom(i.dailyRate, qty)
-        : (Number(i.price) || 0) * qty;
-      subtotal += mensual;
-      // Sin tarifa de tabla (13+ meses) — se escala a Dirección Comercial y no
-      // se imprime un importe que no existe.
-      const importe = (tableType === 'tabulador' && i.tramo === '13+')
-        ? '<span style="color:#607078;font-style:italic;">Ver con Dirección Comercial</span>'
-        : fmt(mensual);
-      // El plazo se guarda como id ('4-6'); al cliente se le muestra su
-      // etiqueta ('4 a 6 meses'). Si la fila aún no tiene plazo, un guion.
-      const plazo = conPlazo
-        ? LPTD(tramoById(i.tramo)?.label ?? '—', 'center', 'white-space:nowrap;')
-        : '';
-      return `<tr>
-        ${LPTD(qty,'center')}
-        ${LPTD(i.name || '')}
-        ${LPTD(i.specs || '','left','color:#607078;font-size:8.5pt;')}
-        ${plazo}
-        ${LPTD(importe,'right',`font-weight:700;color:${LP_HDR_BG};`)}
-      </tr>`;
-    }).join('');
+    if (tableType === 'costos') {
+      // Traslados: el cliente debe poder verificar a dónde va la unidad y de
+      // qué tipo es, porque de eso depende la tarifa del tablero.
+      columnas = ['CANT.', 'ESTADO', 'MUNICIPIO', 'TIPO DE UNIDAD', 'CONCEPTO', 'COSTO SIN IVA'];
+      headRow = `<tr>${LPTH('CANT.','center')}${LPTH('ESTADO')}${LPTH('MUNICIPIO')}`
+        + `${LPTH('TIPO DE UNIDAD')}${LPTH('CONCEPTO')}${LPTH('COSTO SIN IVA','right')}</tr>`;
+
+      bodyRows = items.map(i => {
+        const qty     = Number(i.quantity) || 1;
+        const importe = (Number(i.price) || 0) * qty;
+        subtotal += importe;
+        // El tipo se guarda como id ('sedan'); al cliente se le muestra su
+        // etiqueta ('Sedán y Compacto'). Las filas capturadas a mano no traen
+        // estado ni municipio: ahí va un guion en vez de una celda vacía.
+        const tipo = tipoTrasladoById(i.tipo)?.label;
+        return `<tr>
+          ${LPTD(qty,'center')}
+          ${LPTD(dato(i.estado))}
+          ${LPTD(dato(i.municipio))}
+          ${LPTD(dato(tipo))}
+          ${LPTD(dato(i.name))}
+          ${LPTD(fmt(importe),'right',importeStyle)}
+        </tr>`;
+      }).join('');
+
+    } else {
+      const conPlazo = tableType === 'tabulador';
+      const etiquetaImporte = conPlazo ? 'RENTA MENSUAL SIN IVA' : 'COSTO SIN IVA';
+      columnas = ['CANT.', 'UNIDAD', 'ESPECIFICACIONES', ...(conPlazo ? ['PLAZO'] : []), etiquetaImporte];
+      headRow = `<tr>${LPTH('CANT.','center')}${LPTH('UNIDAD')}${LPTH('ESPECIFICACIONES')}`
+        + (conPlazo ? LPTH('PLAZO','center') : '')
+        + `${LPTH(etiquetaImporte,'right')}</tr>`;
+
+      bodyRows = items.map(i => {
+        const qty = Number(i.quantity) || 1;
+        // El tabulador cotiza tarifa diaria; las adecuaciones, importe directo.
+        const monto = conPlazo ? monthlyFrom(i.dailyRate, qty) : (Number(i.price) || 0) * qty;
+        subtotal += monto;
+        // 13+ meses no tiene tarifa de tabla. Si el ejecutivo ya capturó el
+        // precio que le dio Dirección Comercial, se imprime: dejar el aviso ahí
+        // haría que el total incluyera un importe que la fila no muestra.
+        const importe = (conPlazo && i.tramo === '13+' && monto === 0)
+          ? '<span style="color:#607078;font-style:italic;">Ver con Dirección Comercial</span>'
+          : fmt(monto);
+        // El plazo se guarda como id ('4-6'); se muestra su etiqueta.
+        const plazo = conPlazo
+          ? LPTD(tramoById(i.tramo)?.label ?? DASH, 'center', 'white-space:nowrap;')
+          : '';
+        return `<tr>
+          ${LPTD(qty,'center')}
+          ${LPTD(i.name || '')}
+          ${LPTD(i.specs || '','left','color:#607078;font-size:8.5pt;')}
+          ${plazo}
+          ${LPTD(importe,'right',importeStyle)}
+        </tr>`;
+      }).join('');
+    }
 
     // UNIDADES PROPUESTAS no lleva total propio: su suma ES la mensualidad del
     // hero y repetirla sería decir el mismo número dos veces. Costos
@@ -208,8 +243,8 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
     // cliente no tiene de dónde leer cuánto suman.
     const pie = tableType === 'tabulador' ? '' : `<tfoot>
         <tr style="border-top:2px solid ${LP_ORANGE};">
-          <td colspan="3" style="text-align:right;padding:5px 10px;font-weight:800;font-size:9pt;color:${LP_HDR_BG};">TOTAL</td>
-          <td style="text-align:right;padding:5px 10px;font-weight:900;font-size:10.5pt;color:${LP_HDR_BG};">${fmt(subtotal)}</td>
+          <td colspan="${columnas.length - 1}" style="text-align:right;padding:5px 8px;font-weight:800;font-size:9pt;color:${LP_HDR_BG};">TOTAL</td>
+          <td style="text-align:right;padding:5px 8px;font-weight:900;font-size:10.5pt;color:${LP_HDR_BG};">${fmt(subtotal)}</td>
         </tr>
       </tfoot>`;
 

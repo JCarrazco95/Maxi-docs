@@ -129,7 +129,7 @@ export function processPricingTableNodes(html) {
           const linea = (etiqueta, monto) => monto > 0
             ? `<div style="display:flex;justify-content:space-between;gap:14px;"><span>${etiqueta}</span><span>${fmt(monto)}</span></div>`
             : ''
-          const filas = linea('Costos adicionales', totalCostos) + linea('Adecuaciones', totalAdecuaciones)
+          const filas = linea('Servicio de traslado', totalCostos) + linea('Adecuaciones', totalAdecuaciones)
           const desglose = filas
             ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.18);font-size:7.5pt;color:#8FA8B2;line-height:1.5;text-align:left;">${filas}</div>`
             : ''
