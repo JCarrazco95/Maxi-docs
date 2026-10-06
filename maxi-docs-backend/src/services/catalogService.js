@@ -182,9 +182,9 @@ export function buildPricingTableHtml(items, ivaRate = 16, tableType = 'renta') 
     if (tableType === 'costos') {
       // Traslados: el cliente debe poder verificar a dónde va la unidad y de
       // qué tipo es, porque de eso depende la tarifa del tablero.
-      columnas = ['CANT.', 'ESTADO', 'MUNICIPIO', 'TIPO DE UNIDAD', 'CONCEPTO', 'IMPORTE ÚNICO SIN IVA'];
+      columnas = ['CANT.', 'ESTADO', 'MUNICIPIO', 'TIPO DE UNIDAD', 'CONCEPTO', 'COSTO SIN IVA'];
       headRow = `<tr>${LPTH('CANT.','center')}${LPTH('ESTADO')}${LPTH('MUNICIPIO')}`
-        + `${LPTH('TIPO DE UNIDAD')}${LPTH('CONCEPTO')}${LPTH('IMPORTE ÚNICO SIN IVA','right')}</tr>`;
+        + `${LPTH('TIPO DE UNIDAD')}${LPTH('CONCEPTO')}${LPTH('COSTO SIN IVA','right')}</tr>`;
 
       bodyRows = items.map(i => {
         const qty     = Number(i.quantity) || 1;

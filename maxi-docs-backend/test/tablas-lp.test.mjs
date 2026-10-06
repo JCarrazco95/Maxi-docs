@@ -31,7 +31,7 @@ test('UNIDADES PROPUESTAS muestra el PLAZO entre especificaciones y el importe',
 
 test('COSTOS ADICIONALES desglosa el traslado en sus propias columnas', () => {
   const cols = encabezados(buildPricingTableHtml(traslados, 16, 'costos'));
-  assert.deepEqual(cols, ['CANT.', 'ESTADO', 'MUNICIPIO', 'TIPO DE UNIDAD', 'CONCEPTO', 'IMPORTE ÚNICO SIN IVA']);
+  assert.deepEqual(cols, ['CANT.', 'ESTADO', 'MUNICIPIO', 'TIPO DE UNIDAD', 'CONCEPTO', 'COSTO SIN IVA']);
 });
 
 test('el tipo de traslado se imprime con su etiqueta, no con el id', () => {
@@ -47,10 +47,13 @@ test('una fila de costos capturada a mano no deja celdas vacías', () => {
   assert.ok(html.includes('Entrega en sitio'));
 });
 
-test('solo el tabulador cobra por mes; lo demás es importe único', () => {
+test('solo el tabulador cobra por mes; lo demás es un pago único', () => {
   assert.ok(buildPricingTableHtml(unidades, 16, 'tabulador').includes('RENTA MENSUAL SIN IVA'));
+  assert.ok(buildPricingTableHtml(traslados, 16, 'costos').includes('COSTO SIN IVA'));
+  assert.ok(buildPricingTableHtml(adicionales, 16, 'adicionales').includes('IMPORTE ÚNICO SIN IVA'));
+  // Ninguna de las dos debe decir "mensualidad": no son cargos recurrentes
   for (const tipo of ['costos', 'adicionales']) {
-    assert.ok(buildPricingTableHtml(adicionales, 16, tipo).includes('IMPORTE ÚNICO SIN IVA'), tipo);
+    assert.ok(!buildPricingTableHtml(adicionales, 16, tipo).includes('MENSUALIDAD'), tipo);
   }
 });
 
