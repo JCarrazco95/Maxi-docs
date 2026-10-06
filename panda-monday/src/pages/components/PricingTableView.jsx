@@ -549,7 +549,7 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
             {/* Mensualidad — calculada */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end',
               paddingRight:8, fontWeight:700, color:'#063B4A', fontSize:12 }}>
-              {sinTabla ? '—' : fmt(monthlyFrom(item.dailyRate, qty))}
+              {sinTabla && !(Number(item.dailyRate) > 0) ? '—' : fmt(monthlyFrom(item.dailyRate, qty))}
             </div>
 
             <div className="pt-c-del">
