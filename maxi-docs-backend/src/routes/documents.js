@@ -7,6 +7,7 @@ import { buildPricingTableHtml } from '../services/catalogService.js';
 import { monthlyFrom, minTramo, tramoById } from '../services/rateCardService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { logEvent, hashPdfFile } from '../services/auditService.js';
+import { requireDiagnostico } from '../middleware/diagnosticoGate.js';
 
 const router = Router();
 
@@ -561,7 +562,9 @@ router.get('/:id', async (req, res) => {
 // Acepta dos modos:
 //   a) Clásico: template_id + filled_data → el backend llena las variables
 //   b) Editor:  content_html             → HTML ya editado en el editor del cliente
-router.post('/generate', requireEditor, async (req, res) => {
+// Candado: solo se cotiza un lead con el diagnóstico comercial completo
+// (las 5 luces en verde). Ver services/diagnosticoService.js.
+router.post('/generate', requireEditor, requireDiagnostico(req => req.body?.monday_item_id), async (req, res) => {
   const { accountId, userId } = req.mondayContext;
   const {
     template_id,
