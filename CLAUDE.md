@@ -125,3 +125,8 @@ Optional features activate when their keys are present: email (Resend or SMTP), 
 - All DB access uses the `query(sql, params)` pool helper. Never build raw string interpolation — always use `$1, $2` parameters.
 - `logEvent()` from `auditService.js` never throws — failures are caught internally.
 - The `opensign_document_id` column in `signatures` is repurposed to store `fieldConfig` JSON (legacy name, not OpenSign).
+
+### Cotización desde Oportunidades Maxirent
+
+Se cotiza desde los elementos del tablero Oportunidades Maxirent (`8311006777`), no desde Leads. `POST /api/documents/generate` **actualiza** ese mismo elemento (`monday_item_id`) con `change_multiple_column_values` (`actualizarMondayDocItem`): nunca crea ni mueve elementos. Si el elemento no está en Oportunidades, no escribe nada. No pisa el ejecutivo, la razón social ni el correo si ya tienen valor. Al enviar a firma (`signatures.js`, `actualizarOportunidadEnMonday`) solo se actualiza el correo, o el elemento completo si al generar no se pudo. El candado del diagnóstico comercial se quitó: se cotiza sin restricciones. Pruebas: `test/oportunidad.test.mjs`.
+

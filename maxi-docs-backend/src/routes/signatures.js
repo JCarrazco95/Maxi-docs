@@ -50,20 +50,15 @@ async function loadAttachmentsForEmail(documentId) {
   return attachments;
 }
 
-// ── Integración Monday: crear oportunidad al enviar a firma ────
+// ── Integración Monday: actualizar la oportunidad al enviar a firma ────
 const OPORTUN_BOARD  = '8311006777';
-const OPORTUN_GROUP  = 'topics'; // Cotizaciones enviadas
 const COL_RAZON      = 'text_mkvxs7sb';
-const COL_VALOR      = 'n_meros_mkmfsgxr';
-const COL_DEAL_VAL   = 'deal_value';
 const COL_FECHA      = 'deal_creation_date';
 const COL_ESTADO_COT = 'color_mktmr9yy';
 const COL_ETAPA      = 'deal_stage';
-const COL_EJECUTIVO  = 'deal_owner';
 const COL_FOLIO      = 'text_mktmgv5z';
 const COL_PDF_FILE   = 'archivo_mkmghcc4';
 const COL_EMAIL      = 'email';   // Dirección de e-mail principal del contacto
-const COL_LEAD_RELATION = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent
 
 async function mondayGql(query, token) {
   const res = await fetch('https://api.monday.com/v2', {
@@ -76,79 +71,65 @@ async function mondayGql(query, token) {
   return data.data;
 }
 
-async function crearOportunidadEnMonday({ document, userId, signerEmail }) {
+// Al enviar a firma ya no se crea ningún elemento: la cotización se hizo desde
+// la oportunidad (Oportunidades Maxirent) y se actualiza ese mismo elemento.
+async function actualizarOportunidadEnMonday({ document, userId, signerEmail }) {
   const token = process.env.MONDAY_API_TOKEN;
   if (!token) return;
 
-  // Si ya tiene item en Monday (creado al guardar PDF), no duplicamos —
-  // solo actualizamos el email del contacto al que se le envió la cotización.
+  // Caso normal: al generar la cotización ya se escribió en la oportunidad.
+  // Aquí solo falta el correo del contacto al que se le envió.
   if (document.monday_doc_item_id) {
-    console.log(`[Monday] Item ya existe: ${document.monday_doc_item_id}, sin duplicar`);
     if (signerEmail) {
       await actualizarEmailEnItemMonday(document.monday_doc_item_id, signerEmail, token).catch(() => {});
     }
     return;
   }
 
+  // Si al generar no se pudo escribir en monday, se intenta ahora sobre la
+  // oportunidad desde la que se cotizó. Nunca se crea un elemento nuevo.
+  const itemId = document.monday_item_id;
+  if (!itemId) {
+    console.warn(`[Monday] Documento ${document.id} sin elemento de monday; no se actualiza nada`);
+    return;
+  }
+
   try {
     const filled  = typeof document.filled_data === 'string'
       ? JSON.parse(document.filled_data) : (document.filled_data ?? {});
-    const cliente = filled.name || filled.nombre || filled.razon_social || document.name || '';
-    // Solo el campo real de razón social — sin fallback a nombre de persona,
-    // para no duplicar lo que ya va en "Oportunidad" (puede venir "NA" para
-    // personas físicas sin empresa, y eso está bien).
     const empresa = filled.razon_social || '';
     const today   = new Date().toISOString().split('T')[0];
-    // Solo el nombre del lead, sin sufijo
-    const itemName = cliente || document.doc_number || 'Nueva cotización';
 
     const colValues = {
-      [COL_RAZON]:      empresa,
       [COL_FECHA]:      { date: today },
       [COL_ESTADO_COT]: { label: 'Enviado' },
       [COL_ETAPA]:      { label: 'Cotización enviada' },
       [COL_FOLIO]:      document.doc_number ?? '',
     };
-    if (userId && userId !== 'dev') {
-      colValues[COL_EJECUTIVO] = { personsAndTeams: [{ id: Number(userId), kind: 'person' }] };
-    }
-    // Dirección de e-mail principal del contacto — al que se le envió la cotización
-    if (signerEmail) {
-      colValues[COL_EMAIL] = { email: signerEmail, text: signerEmail };
-    }
-    // Relación con el item original de "Leads Maxirent" — el pulse ID del lead
-    // se guardó en documents.monday_item_id al momento de generar.
-    if (document.monday_item_id) {
-      colValues[COL_LEAD_RELATION] = { item_ids: [Number(document.monday_item_id)] };
-    }
+    if (empresa)     colValues[COL_RAZON] = empresa;
+    if (signerEmail) colValues[COL_EMAIL] = { email: signerEmail, text: signerEmail };
 
     const mutation = `
       mutation {
-        create_item(
+        change_multiple_column_values(
           board_id: ${OPORTUN_BOARD},
-          group_id: "${OPORTUN_GROUP}",
-          item_name: ${JSON.stringify(itemName)},
+          item_id: ${itemId},
           column_values: ${JSON.stringify(JSON.stringify(colValues))}
         ) { id }
       }
     `;
-    const data = await mondayGql(mutation, token);
-    const itemId = data?.create_item?.id;
-    console.log(`[Monday] Oportunidad creada: ${itemId} — ${itemName}`);
+    await mondayGql(mutation, token);
+    console.log(`[Monday] Oportunidad actualizada al enviar a firma: ${itemId}`);
 
-    // Guardar item ID en el documento
-    if (itemId) {
-      await query(
-        `UPDATE documents SET monday_doc_item_id = $1 WHERE id = $2`,
-        [itemId, document.id]
-      );
-      // Subir PDF en background
-      if (document.pdf_content) {
-        uploadPdfOportunidad(itemId, Buffer.from(document.pdf_content), document.doc_number, token).catch(() => {});
-      }
+    await query(
+      `UPDATE documents SET monday_doc_item_id = $1 WHERE id = $2`,
+      [String(itemId), document.id]
+    );
+    if (document.pdf_content) {
+      uploadPdfOportunidad(itemId, Buffer.from(document.pdf_content), document.doc_number, token).catch(() => {});
     }
   } catch (e) {
-    console.error('[Monday] Error creando oportunidad:', e.message);
+    console.error('[Monday] Error actualizando oportunidad:', e.message);
   }
 }
 
@@ -315,10 +296,10 @@ router.post('/send', requireEditor, async (req, res) => {
 
   await query(`UPDATE documents SET status = 'sent' WHERE id = $1`, [document_id]);
 
-  // Crear oportunidad en Monday al enviar a firma.
+  // Actualizar la oportunidad en Monday al enviar a firma (nunca se crea una nueva).
   // Mapeamos el correo del primer firmante (contacto principal) a la columna Email.
   const signerEmail = signers[0]?.email?.trim() || null;
-  crearOportunidadEnMonday({ document, userId, signerEmail }).catch(() => {});
+  actualizarOportunidadEnMonday({ document, userId, signerEmail }).catch(() => {});
 
   // Audit: documento enviado a firma
   const pdfHash = hashPdfFile(document.pdf_url);
