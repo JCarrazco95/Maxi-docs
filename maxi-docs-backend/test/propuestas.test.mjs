@@ -9,7 +9,7 @@
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import { listarPropuestas, propuestasDelPortal, aprobarPropuesta, propuestaAprobadaDelItem, seleccionarPorEjecutivo }
+import { listarPropuestas, propuestasDelPortal, aprobarPropuesta, propuestaAprobadaDelItem, seleccionarPorEjecutivo, incluirPropuestasEnEnvio }
   from '../src/services/propuestasService.js';
 
 const URL = process.env.TEST_DATABASE_URL;
@@ -207,5 +207,33 @@ test('aprobar desde el cliente marca la fuente como cliente', opts, async () => 
   const a = await crearDoc({ folio: 'MRLP-0001-A' });
   await aprobarPropuesta({ signatureId: await crearFirma(a), documentId: a, db });
   assert.deepEqual((await seleccion())['MRLP-0001-A'], ['approved', 'cliente']);
+});
+
+// ── Varias propuestas en un solo correo ──────────────────────────
+test('al enviar se incluyen solo borradores con PDF de la misma oportunidad', opts, async () => {
+  const principal = await crearDoc({ folio: 'MRLP-0001-C', status: 'draft' });
+  const a = await crearDoc({ folio: 'MRLP-0001-A', status: 'draft' });
+  const b = await crearDoc({ folio: 'MRLP-0001-B', status: 'draft' });
+  const ajena   = await crearDoc({ folio: 'MRLP-0002-A', item: '888', status: 'draft' });
+  const sinPdf  = await crearDoc({ folio: 'MRLP-0001-D', status: 'draft' });
+  const firmada = await crearDoc({ folio: 'MRLP-0001-E', status: 'signed' });
+  await db(`UPDATE documents SET pdf_url = '/x.pdf' WHERE id <> $1`, [sinPdf]);
+  const doc = (await db(`SELECT * FROM documents WHERE id = $1`, [principal])).rows[0];
+
+  const r = await incluirPropuestasEnEnvio({ document: doc, ids: [a, b, ajena, sinPdf, firmada, principal, a], db });
+  assert.deepEqual(new Set(r.map(x => x.id)), new Set([a, b]));
+  const st = Object.fromEntries((await db(`SELECT doc_number, status FROM documents`)).rows.map(x => [x.doc_number, x.status]));
+  assert.equal(st['MRLP-0001-A'], 'sent');
+  assert.equal(st['MRLP-0001-B'], 'sent');
+  assert.equal(st['MRLP-0002-A'], 'draft');
+  assert.equal(st['MRLP-0001-D'], 'draft');
+  assert.equal(st['MRLP-0001-E'], 'signed');
+});
+
+test('sin ids o sin oportunidad no cambia nada', opts, async () => {
+  const solo = await crearDoc({ folio: 'MR-2026-0001', item: null, status: 'draft' });
+  const doc = (await db(`SELECT * FROM documents WHERE id = $1`, [solo])).rows[0];
+  assert.deepEqual(await incluirPropuestasEnEnvio({ document: doc, ids: [], db }), []);
+  assert.deepEqual(await incluirPropuestasEnEnvio({ document: doc, ids: undefined, db }), []);
 });
 

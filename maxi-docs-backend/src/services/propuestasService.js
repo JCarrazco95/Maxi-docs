@@ -179,10 +179,23 @@ export async function propuestaAprobadaDelItem({ accountId, mondayItemId, db = q
   return r.rows[0] ?? null;
 }
 
-/** Cuántas propuestas de la oportunidad tendrá el cliente al enviarle este documento. */
-export async function contarPropuestasAlEnviar({ documentId, db = query }) {
-  const propuestas = await listarPropuestas({ documentId, db });
-  return propuestas.length;
+/**
+ * Propuestas guardadas que se mandan junto con `document` en un solo correo.
+ * Solo se aceptan borradores con PDF de la MISMA oportunidad (cuenta + item);
+ * cualquier otro id se ignora. Pasan a 'sent' y el portal las muestra.
+ */
+export async function incluirPropuestasEnEnvio({ document, ids, db = query }) {
+  const limpios = [...new Set((ids ?? []).map(String))].filter(id => id !== String(document.id));
+  if (!limpios.length || !document.monday_item_id) return [];
+  const r = await db(
+    `UPDATE documents SET status = 'sent'
+     WHERE id::text = ANY($1)
+       AND monday_account_id IS NOT DISTINCT FROM $2 AND monday_item_id = $3
+       AND status = 'draft' AND pdf_url IS NOT NULL
+     RETURNING id, doc_number, name`,
+    [limpios, document.monday_account_id, String(document.monday_item_id)]
+  );
+  return r.rows;
 }
 
 /**

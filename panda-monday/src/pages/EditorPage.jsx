@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/core'
 import MondayVariablesPanel from './components/MondayVariablesPanel.jsx'
 import DesignPanel, { buildDesignCss } from './components/DesignPanel.jsx'
+import PropuestasAIncluir, { useBorradoresDeOportunidad } from './components/PropuestasAIncluir.jsx'
 import RecipientsPanel from './components/RecipientsPanel.jsx'
 import { BLOCK_GROUPS } from './components/BlocksSidebar.jsx'
 
@@ -294,6 +295,12 @@ export default function EditorPage() {
 
   // Panel derecho activo: 'content' | 'recipients' | 'variables' | 'design' | 'workflow' | 'attachments' | 'preview'
   const [activePanel, setActivePanel] = useState(null)
+  // Propuestas guardadas de la misma oportunidad que se envían en el mismo correo
+  const propuestasExtra = useBorradoresDeOportunidad(session?.itemId, session?.documentId)
+  const [revisoPropuestas, setRevisoPropuestas] = useState(false)
+  useEffect(() => {
+    if (activePanel === 'recipients' && propuestasExtra.borradores.length) setRevisoPropuestas(true)
+  }, [activePanel, propuestasExtra.borradores.length])
   function togglePanel(id) { setActivePanel(p => p === id ? null : id) }
 
   // Firmantes
@@ -439,11 +446,14 @@ export default function EditorPage() {
           if (r.data.email) setOwnerEmail(r.data.email)
           if (r.data.name)  setOwnerName(r.data.name)
 
-          // Calcular fecha de creación y vigencia (15 días calendario)
+          // Calcular fecha de creación y vigencia (días calendario). La propuesta
+          // LP vale 30 días; las demás plantillas, 15. La LP se reconoce por su
+          // tabla "tabulador", igual que en el folio (no por el nombre).
           const hoy = new Date()
           const fmtDate = d => d.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
+          const esLP = /data-table-type="tabulador"/.test(tpl.content_html ?? '')
           const vigencia = new Date(hoy)
-          vigencia.setDate(vigencia.getDate() + 15)
+          vigencia.setDate(vigencia.getDate() + (esLP ? 30 : 15))
 
           // Variables automáticas del vendedor + fechas
           const autoVars = {
@@ -561,6 +571,14 @@ export default function EditorPage() {
       setActivePanel('recipients')
       return
     }
+    // Hay propuestas guardadas de esta oportunidad: antes del primer envío se
+    // muestran para que el ejecutivo confirme cuáles van en este mismo correo.
+    if (propuestasExtra.borradores.length && !revisoPropuestas) {
+      setActivePanel('recipients')
+      setRevisoPropuestas(true)
+      setSignError('Revisa qué propuestas guardadas van en este mismo correo y vuelve a dar «Enviar propuesta».')
+      return
+    }
 
     setGenerating(true); setSignError(null)
     try {
@@ -609,6 +627,7 @@ export default function EditorPage() {
           order: sequential ? i + 1 : 1,
         })),
         field_config: null,
+        incluir_ids:  propuestasExtra.incluirIds,
       })
       setSendingSign(false)
       setSaved(true)
@@ -858,6 +877,9 @@ export default function EditorPage() {
                   sequential={sequential}
                   setSequential={setSequential}
                   onClose={() => setActivePanel(null)}
+                  extra={session?.itemId && (
+                    <PropuestasAIncluir {...propuestasExtra} mostrarAyuda />
+                  )}
                 />
               )}
               {activePanel === 'variables' && (

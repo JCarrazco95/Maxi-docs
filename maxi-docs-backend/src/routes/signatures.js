@@ -6,7 +6,7 @@ import { logEvent, hashPdfFile, hashBuffer } from '../services/auditService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { downloadFile } from '../services/storageService.js';
 import { extractQuoteValues, escribirAprobadaEnMonday } from './documents.js';
-import { propuestasDelPortal, aprobarPropuesta, contarPropuestasAlEnviar } from '../services/propuestasService.js';
+import { propuestasDelPortal, aprobarPropuesta, listarPropuestas, incluirPropuestasEnEnvio } from '../services/propuestasService.js';
 
 const router = Router();
 
@@ -29,6 +29,21 @@ function extractEmailDisplayData(document) {
   // En la propuesta LP el plazo lo define el tramo cotizado, no la columna
   // "Duración del Proyecto" del board — pero esa columna manda si viene llena.
   return { unidades, plazo: plazo || plazoTabulador };
+}
+
+// Marca como enviadas las propuestas extra de un envío y deja rastro en la auditoría.
+async function incluirPropuestas({ document, ids, userId }) {
+  if (!Array.isArray(ids) || !ids.length) return [];
+  const incluidas = await incluirPropuestasEnEnvio({ document, ids });
+  for (const d of incluidas) {
+    logEvent({
+      documentId: d.id,
+      action:     'document.sent',
+      actor:      { id: userId },
+      metadata:   { junto_con: document.id, folio: d.doc_number },
+    });
+  }
+  return incluidas;
 }
 
 // Carga los adjuntos de soporte de un documento y descarga su contenido
@@ -218,7 +233,7 @@ async function callOutgoingWebhook(event, payload) {
 router.post('/send', requireEditor, async (req, res) => {
   console.log('[FIRMA V2] Recibiendo request de firma - SIN DOCUSEAL');
   const { accountId, userId, isAdmin } = req.mondayContext;
-  const { document_id, signers, expire_days, sender_note, sender_name, field_config } = req.body;
+  const { document_id, signers, expire_days, sender_note, sender_name, field_config, incluir_ids } = req.body;
 
   if (!document_id || !signers?.length) {
     return res.status(400).json({ error: 'document_id y signers son requeridos' });
@@ -237,12 +252,18 @@ router.post('/send', requireEditor, async (req, res) => {
   }
   if (!document.pdf_url) return res.status(400).json({ error: 'El documento no tiene PDF generado' });
 
+  // Propuestas guardadas (borradores) de la misma oportunidad que se mandan en
+  // este mismo correo: pasan a "enviadas" y el cliente las ve todas en su enlace.
+  const incluidas = await incluirPropuestas({ document, ids: incluir_ids, userId });
+
   const insertedSignatures = [];
   const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:8301';
   const emailAttachments = await loadAttachmentsForEmail(document_id).catch(() => []);
   const { unidades: emailUnidades, plazo: emailPlazo } = extractEmailDisplayData(document);
-  // El cliente verá en su enlace todas las propuestas enviadas de la oportunidad
-  const totalPropuestas = await contarPropuestasAlEnviar({ documentId: document_id }).catch(() => 1);
+  // El cliente verá en su enlace todas las propuestas enviadas de la oportunidad;
+  // el correo las lista (una sola tarjeta si solo es una).
+  const propuestasCorreo = await listarPropuestas({ documentId: document_id }).catch(() => []);
+  const totalPropuestas  = Math.max(propuestasCorreo.length, 1);
 
   for (let i = 0; i < signers.length; i++) {
     const signer       = signers[i];
@@ -294,6 +315,7 @@ router.post('/send', requireEditor, async (req, res) => {
         unidades:     emailUnidades,
         plazo:        emailPlazo,
         totalPropuestas,
+        propuestas:   propuestasCorreo.map(p => ({ folio: p.folio, nombre: p.nombre, unidades: p.unidades, plazo: p.plazo })),
       }).catch(err => console.error('[Email] Error:', err.message));
     }
   }
@@ -320,7 +342,7 @@ router.post('/send', requireEditor, async (req, res) => {
     signers:  signers.map(s => ({ name: s.name, email: s.email })),
   });
 
-  res.status(201).json({ signatures: insertedSignatures });
+  res.status(201).json({ signatures: insertedSignatures, incluidas });
 });
 
 // GET /api/signatures/portal/:signatureId — datos públicos para el portal del firmante

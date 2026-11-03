@@ -11,7 +11,7 @@ const emptyRow = () => ({ name: '', email: '', autoFilled: false })
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export default function RecipientsPanel({ itemId, signers, setSigners, sequential, setSequential, onClose }) {
+export default function RecipientsPanel({ itemId, signers, setSigners, sequential, setSequential, onClose, extra = null }) {
   const [loading, setLoading] = useState(false)
 
   // Autofill desde el item de Monday
@@ -105,6 +105,8 @@ export default function RecipientsPanel({ itemId, signers, setSigners, sequentia
         {!valid && signers.some(s => s.name || s.email) && (
           <div style={s.warn}>Completa nombre y email válido en todos los firmantes</div>
         )}
+
+        {extra}
 
         <div style={s.divider} />
 
