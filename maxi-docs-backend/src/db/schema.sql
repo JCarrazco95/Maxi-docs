@@ -420,3 +420,13 @@ CREATE TABLE IF NOT EXISTS rate_card_rows (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rate_card_rows_card ON rate_card_rows(rate_card_id);
+
+-- Aprobación del cliente entre varias propuestas de la misma oportunidad
+-- client_selection: NULL (sin decidir) | approved | not_selected
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS client_selection   VARCHAR(20);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS client_selected_at TIMESTAMPTZ;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS client_selected_by TEXT;
+-- client_selection_source: cliente (portal) | ejecutivo (MAXI-DOCS en monday)
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS client_selection_source VARCHAR(20);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_aprobada
+  ON documents (monday_account_id, monday_item_id) WHERE client_selection = 'approved';

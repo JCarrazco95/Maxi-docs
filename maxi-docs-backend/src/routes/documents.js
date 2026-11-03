@@ -5,6 +5,7 @@ import { fillTemplate, applyVariables, generatePdf, generateThumbnail, wrapDocum
 import { uploadPdf, buildPdfKey, uploadFile, buildAttachmentKey, deleteFile } from '../services/storageService.js';
 import { buildPricingTableHtml } from '../services/catalogService.js';
 import { monthlyFrom, minTramo, tramoById } from '../services/rateCardService.js';
+import { seleccionarPorEjecutivo } from '../services/propuestasService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { logEvent, hashPdfFile } from '../services/auditService.js';
 
@@ -39,16 +40,35 @@ const COL_ETAPA          = 'deal_stage';          // Etapa → "Cotización envi
 const COL_RESPONSABLE    = 'deal_owner';          // Ejecutivo (people)
 const COL_PDF            = 'archivo_mkmghcc4';    // Cotización (file)
 const COL_FOLIO          = 'text_mktmgv5z';       // Folio Pandadoc
-const COL_EMAIL          = 'email';               // Dirección de e-mail principal del contacto
+const COL_EMAIL          = 'email';
+// Etiqueta de "Estado cotización" cuando el cliente aprueba una propuesta.
+// Se crea en monday si no existe (create_labels_if_missing).
+const ESTADO_APROBADA    = process.env.MONDAY_ESTADO_APROBADA || 'Aprobada';               // Dirección de e-mail principal del contacto
+
+// Letra de la propuesta dentro de un mismo folio LP: 0→A … 25→Z, 26→AA.
+export function letraPropuesta(indice) {
+  let n = indice, letra = '';
+  do { letra = String.fromCharCode(65 + (n % 26)) + letra; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return letra;
+}
+
+// Índice de la letra de un folio LP (MRLP-0001-B → 1). Un folio sin letra,
+// emitido antes de que existieran las letras, cuenta como la A.
+export function indiceLetra(folio) {
+  const m = /^MRLP-\d+-([A-Z]+)$/.exec(folio ?? '');
+  if (!m) return 0;
+  return [...m[1]].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64), 0) - 1;
+}
 
 /**
  * Resuelve el folio de una cotización.
  *
- * La propuesta LP usa su propia serie MRLP-NNNN y REUTILIZA el folio entre
- * cotizaciones del mismo item de Monday: a un cliente se le mandan varias
- * versiones y todas deben llevar el mismo número, en vez de abrir un folio
- * nuevo cada vez. La plantilla comercial conserva su comportamiento de
- * siempre — una serie MR-{AÑO}-NNNN y un folio por documento.
+ * La propuesta LP usa su propia serie MRLP-NNNN y REUTILIZA el número entre
+ * cotizaciones del mismo item de Monday, distinguiéndolas con una letra:
+ * MRLP-0001-A, MRLP-0001-B… Al cliente se le mandan varias propuestas para
+ * que elija una, así que comparten número pero cada una se identifica sola.
+ * La plantilla comercial conserva su comportamiento de siempre — una serie
+ * MR-{AÑO}-NNNN y un folio por documento.
  *
  * La plantilla se detecta por su contenido y no por el nombre: renombrarla
  * desde la app no debe cambiar cómo se numera. La tabla "tabulador" solo
@@ -62,21 +82,25 @@ export async function resolverFolio({ srcHtml, accountId, mondayItemId, db = que
     return `MR-${new Date().getFullYear()}-${String(seq.rows[0].n).padStart(4, '0')}`;
   }
 
-  // Reusar el folio de la primera cotización LP de este item, si ya hubo una
+  // Reusar el número de las propuestas LP previas de este item, con la letra siguiente
   if (mondayItemId) {
-    const previo = await db(
+    const previos = await db(
       `SELECT doc_number FROM documents
        WHERE monday_account_id = $1 AND monday_item_id = $2
          AND doc_number LIKE 'MRLP-%'
-       ORDER BY created_at ASC
-       LIMIT 1`,
+       ORDER BY created_at ASC`,
       [accountId, String(mondayItemId)]
     );
-    if (previo.rows[0]?.doc_number) return previo.rows[0].doc_number;
+    const folios = previos.rows.map(r => r.doc_number).filter(Boolean);
+    const base   = folios.map(f => /^MRLP-\d+/.exec(f)?.[0]).find(Boolean);
+    if (base) {
+      const siguiente = Math.max(...folios.map(indiceLetra)) + 1;
+      return `${base}-${letraPropuesta(siguiente)}`;
+    }
   }
 
   const seq = await db(`SELECT nextval('doc_number_lp_seq') AS n`);
-  return `MRLP-${String(seq.rows[0].n).padStart(4, '0')}`;
+  return `MRLP-${String(seq.rows[0].n).padStart(4, '0')}-A`;
 }
 
 // Extrae el total de todas las tablas de precios en el HTML
@@ -245,7 +269,7 @@ async function leerOportunidad(itemId, token) {
  * la cotización se hace desde la oportunidad y solo se actualizan sus columnas.
  * Devuelve el id del elemento actualizado, o null si no se pudo (no bloquea).
  */
-export async function actualizarMondayDocItem({ mondayItemId, docNumber, companyName, clientEmail, totalAmount, html, mondayUserId }) {
+export async function actualizarMondayDocItem({ mondayItemId, docNumber, companyName, clientEmail, totalAmount, html, mondayUserId, aprobada = false, fechaEmision = null }) {
   const token = process.env.MONDAY_API_TOKEN;
   console.log(`[Monday] actualizarMondayDocItem — token: ${token ? '✅ presente' : '❌ AUSENTE'} | item: ${mondayItemId || '—'} | userId: ${mondayUserId}`);
   if (!token || !mondayItemId) return null;
@@ -280,11 +304,13 @@ export async function actualizarMondayDocItem({ mondayItemId, docNumber, company
       [COL_ENTREGA_RECOLECCION]:String(Math.round(quoteValues?.entregaRecoleccion ?? 0)),
       [COL_ADECUACIONES]:       String(Math.round(quoteValues?.subtotalAdecuaciones ?? 0)),
       [COL_UNIDADES_COUNT]:     String(quoteValues?.unidadesCount ?? 0),
-      [COL_FECHA_EMISION]:      { date: today },
-      [COL_ESTADO_COT]:         { label: 'Enviado' },
-      [COL_ETAPA]:              { label: 'Cotización enviada' },
+      [COL_FECHA_EMISION]:      { date: fechaEmision || today },
+      [COL_ESTADO_COT]:         { label: aprobada ? ESTADO_APROBADA : 'Enviado' },
       [COL_FOLIO]:              docNumber,
     };
+    // La etapa solo se mueve al enviar: al aprobar, la oportunidad puede ir ya
+    // más adelante en el embudo y no se regresa.
+    if (!aprobada) colValues[COL_ETAPA] = { label: 'Cotización enviada' };
 
     // Datos de contacto: solo se escriben si vienen con valor, para no borrar
     // lo que la oportunidad ya tenía capturado.
@@ -350,6 +376,71 @@ async function uploadPdfToMondayItem(itemId, pdfBuffer, docNumber) {
   } catch (e) {
     console.warn('[Monday] No se pudo subir PDF:', e.message);
   }
+}
+
+// Vacía la columna de archivo de la cotización (para dejar solo la aprobada).
+async function vaciarPdfsDeMondayItem(itemId) {
+  const token = process.env.MONDAY_API_TOKEN;
+  if (!token || !itemId) return;
+  const mutation = `mutation { change_column_value(board_id: ${MONDAY_COTIZACIONES_BOARD}, item_id: ${itemId}, column_id: "${COL_PDF}", value: ${JSON.stringify(JSON.stringify({ clear_all: true }))}) { id } }`;
+  const res = await fetch('https://api.monday.com/v2', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body:    JSON.stringify({ query: mutation }),
+  });
+  const data = await res.json();
+  if (data.errors?.length) throw new Error(data.errors[0].message);
+}
+
+/**
+ * El cliente aprobó esta propuesta: en la oportunidad queda solo ella.
+ * Sus valores sustituyen a los de la última cotización enviada, el estado
+ * pasa a "Aprobada" y la columna de cotización se queda solo con su PDF.
+ * No bloquea: un error se registra y la aprobación sigue valiendo en MAXI-DOCS.
+ */
+export async function escribirAprobadaEnMonday(doc) {
+  if (!doc?.monday_item_id) return null;
+  let filled = {};
+  try { filled = typeof doc.filled_data === 'string' ? JSON.parse(doc.filled_data) : (doc.filled_data ?? {}); } catch {}
+  const fecha = doc.created_at ? new Date(doc.created_at).toISOString().split('T')[0] : null;
+
+  const id = await actualizarMondayDocItem({
+    mondayItemId: doc.monday_item_id,
+    docNumber:    doc.doc_number,
+    companyName:  filled.razon_social || '',
+    clientEmail:  filled.correo_electronico || filled.email || '',
+    html:         doc.content_html,
+    mondayUserId: doc.monday_user_id,
+    aprobada:     true,
+    fechaEmision: fecha,
+  });
+  if (!id) return null;
+
+  const pdf = doc.pdf_content ? Buffer.from(doc.pdf_content) : null;
+  if (pdf) {
+    try {
+      await vaciarPdfsDeMondayItem(id);
+      await uploadPdfToMondayItem(id, pdf, doc.doc_number);
+    } catch (e) {
+      console.warn('[Monday] No se pudo dejar solo el PDF aprobado:', e.message);
+    }
+  }
+  return id;
+}
+
+// El ejecutivo reabrió la elección: la oportunidad vuelve a "Enviado".
+// Los valores y el PDF se quedan hasta que se apruebe otra propuesta.
+export async function marcarReabiertaEnMonday(itemId) {
+  const token = process.env.MONDAY_API_TOKEN;
+  if (!token || !itemId) return;
+  const mutation = `mutation { change_multiple_column_values(board_id: ${MONDAY_COTIZACIONES_BOARD}, item_id: ${itemId}, column_values: ${JSON.stringify(JSON.stringify({ [COL_ESTADO_COT]: { label: 'Enviado' } }))}) { id } }`;
+  const res = await fetch('https://api.monday.com/v2', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body:    JSON.stringify({ query: mutation }),
+  });
+  const data = await res.json();
+  if (data.errors?.length) throw new Error(data.errors[0].message);
 }
 
 // "Duración del Proyecto" se usa como "Plazo" en el correo de revisión. Se
@@ -533,7 +624,8 @@ router.get('/', async (req, res) => {
 
   const result = await query(
     `SELECT id, name, doc_number, template_id, monday_item_id, monday_user_id,
-            owner_name, owner_email, status, pdf_url, created_at, updated_at
+            owner_name, owner_email, status, pdf_url, created_at, updated_at,
+            client_selection, client_selected_at, client_selection_source
      FROM documents
      WHERE ${conditions.join(' AND ')}
      ORDER BY updated_at DESC`,
@@ -657,7 +749,20 @@ router.post('/generate', requireEditor, async (req, res) => {
   // no se crea uno nuevo ni se mueve. No bloquea si falla.
   const companyName = filled_data?.razon_social || '';
   const clientEmail = filled_data?.correo_electronico || filled_data?.email || '';
-  const mondayDocItemId = await actualizarMondayDocItem({
+  // Si el cliente ya aprobó una propuesta de esta oportunidad, monday conserva
+  // la aprobada: la nueva cotización se guarda en MAXI-DOCS pero no la pisa.
+  const yaAprobada = monday_item_id
+    ? (await query(
+        `SELECT doc_number FROM documents
+         WHERE monday_account_id IS NOT DISTINCT FROM $1 AND monday_item_id = $2
+           AND client_selection = 'approved' LIMIT 1`,
+        [accountId, String(monday_item_id)]
+      )).rows[0]
+    : null;
+  if (yaAprobada) {
+    console.log(`[Monday] La oportunidad ${monday_item_id} ya tiene aprobada ${yaAprobada.doc_number}; no se sobrescribe`);
+  }
+  const mondayDocItemId = yaAprobada ? String(monday_item_id) : await actualizarMondayDocItem({
     mondayItemId: monday_item_id,
     docNumber,
     companyName,
@@ -700,11 +805,39 @@ router.post('/generate', requireEditor, async (req, res) => {
   });
 
   // Subir PDF al item de Monday en background — no bloquea la respuesta
-  if (mondayDocItemId) {
+  if (mondayDocItemId && !yaAprobada) {
     uploadPdfToMondayItem(mondayDocItemId, pdfBuffer, docNumber).catch(() => {});
   }
 
   res.status(201).json(doc);
+});
+
+// POST /api/documents/:id/seleccion — el ejecutivo elige la propuesta aprobada
+// de la oportunidad (o cambia la que eligió el cliente), o reabre la elección.
+// Body: { accion: 'aprobar' | 'reabrir', nombre?: nombre del ejecutivo }
+router.post('/:id/seleccion', requireEditor, async (req, res) => {
+  const { accountId, userId, isAdmin } = req.mondayContext;
+  const { accion, nombre } = req.body ?? {};
+  const quien = `${(nombre || '').trim() || `Usuario ${userId}`} (ejecutivo)`;
+
+  const r = await seleccionarPorEjecutivo({ documentId: req.params.id, accion, accountId, isAdmin, quien });
+  if (!r.ok) return res.status(r.status).json({ error: r.error });
+
+  logEvent({
+    documentId: r.doc.id,
+    action:     accion === 'aprobar' ? 'document.approved_by_executive' : 'document.selection_reopened',
+    actor:      { id: userId, name: quien },
+    metadata:   { folio: r.doc.doc_number },
+  });
+
+  // monday en background: no bloquea al ejecutivo
+  if (accion === 'aprobar') {
+    escribirAprobadaEnMonday(r.doc).catch(e => console.error('[Monday] Error escribiendo aprobada:', e.message));
+  } else {
+    marcarReabiertaEnMonday(r.doc.monday_item_id).catch(e => console.error('[Monday] Error reabriendo:', e.message));
+  }
+
+  res.json({ ok: true, propuestas: r.propuestas });
 });
 
 // PUT /api/documents/:id/regenerate — regenera el PDF de un documento existente (mantiene folio)

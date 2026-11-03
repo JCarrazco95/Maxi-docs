@@ -113,6 +113,8 @@ export default function DocumentsPage({ itemId, boardId, accountId, userId, user
   const [search, setSearch]               = useState('')
   const [statusFilter, setStatusFilter]   = useState('all')
   const [exporting, setExporting]         = useState(false)
+  // Elección de la propuesta aprobada: { id, enviando } mientras se confirma
+  const [seleccion, setSeleccion]         = useState(null)
 
   function toggleExpand(docId) {
     setExpandedDocId(prev => prev === docId ? null : docId)
@@ -160,6 +162,18 @@ export default function DocumentsPage({ itemId, boardId, accountId, userId, user
   }, [itemId])
 
   useEffect(() => { loadDocuments() }, [loadDocuments])
+
+  // El ejecutivo marca la propuesta aprobada de la oportunidad, o reabre la elección
+  async function cambiarSeleccion(doc, accion) {
+    setSeleccion({ id: doc.id, enviando: true })
+    try {
+      await api.post(`/api/documents/${doc.id}/seleccion`, { accion, nombre: userName || undefined })
+      setSeleccion(null)
+      loadDocuments()
+    } catch (e) {
+      setSeleccion({ id: doc.id, enviando: false, error: e.response?.data?.error || 'No se pudo guardar. Intenta de nuevo.' })
+    }
+  }
 
   // Recargar cuando el userId cambia (contexto de Monday cargó después del montaje)
   const prevUserId = useRef(userId)
@@ -342,6 +356,15 @@ export default function DocumentsPage({ itemId, boardId, accountId, userId, user
                     <span className={`badge badge-${doc.status}`}>
                       {STATUS_LABELS[doc.status] ?? doc.status}
                     </span>
+                    {/* Elección del cliente entre las propuestas de la oportunidad */}
+                    {doc.client_selection === 'approved' && (
+                      <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: '#258750' }}>
+                        ✓ Aprobada por el {doc.client_selection_source === 'ejecutivo' ? 'ejecutivo' : 'cliente'}
+                      </div>
+                    )}
+                    {doc.client_selection === 'not_selected' && (
+                      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-tertiary)' }}>No seleccionada</div>
+                    )}
                   </td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: 12, whiteSpace: 'nowrap' }}>
                     {formatDate(doc.created_at)}
@@ -387,6 +410,41 @@ export default function DocumentsPage({ itemId, boardId, accountId, userId, user
                           <IconSend /> Enviar a firma
                         </button>
                       )}
+                      {/* Elegir la propuesta aprobada de la oportunidad (o reabrir la elección) */}
+                      {doc.monday_item_id && (doc.status === 'sent' || doc.status === 'signed') && (() => {
+                        const confirmando = seleccion?.id === doc.id
+                        const accion = doc.client_selection === 'approved' ? 'reabrir' : 'aprobar'
+                        const otraAprobada = documents.find(d => d.id !== doc.id
+                          && String(d.monday_item_id) === String(doc.monday_item_id)
+                          && d.client_selection === 'approved')
+                        if (confirmando) return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', maxWidth: 320 }}>
+                            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                              {accion === 'reabrir'
+                                ? 'Ninguna quedará aprobada y el cliente podrá volver a elegir.'
+                                : otraAprobada
+                                  ? `Reemplaza a ${otraAprobada.doc_number || otraAprobada.name} como aprobada.`
+                                  : 'Las demás propuestas quedarán como no seleccionadas.'}
+                            </span>
+                            <button className="btn btn-primary btn-sm" disabled={seleccion.enviando}
+                              onClick={() => cambiarSeleccion(doc, accion)}>
+                              {seleccion.enviando ? 'Guardando…' : 'Confirmar'}
+                            </button>
+                            <button className="btn btn-secondary btn-sm" disabled={seleccion.enviando}
+                              onClick={() => setSeleccion(null)}>Cancelar</button>
+                            {seleccion.error && (
+                              <span style={{ fontSize: 11.5, color: 'var(--danger, #d83a52)', width: '100%' }}>{seleccion.error}</span>
+                            )}
+                          </div>
+                        )
+                        return (
+                          <button className="btn btn-secondary btn-sm"
+                            title={accion === 'aprobar' ? 'Marcar como la propuesta aprobada de la oportunidad' : 'Quitar la aprobación para que el cliente vuelva a elegir'}
+                            onClick={() => setSeleccion({ id: doc.id, enviando: false })}>
+                            {accion === 'aprobar' ? '✓ Marcar aprobada' : '↺ Reabrir elección'}
+                          </button>
+                        )
+                      })()}
                       {doc.pdf_url && (
                         <a
                           className="btn btn-secondary btn-sm btn-icon"
