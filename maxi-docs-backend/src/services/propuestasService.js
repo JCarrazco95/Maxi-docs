@@ -8,11 +8,15 @@
  * desde el portal: para reabrirla, el cliente habla con su ejecutivo.
  *
  * documents.client_selection: NULL (sin decidir) | 'approved' | 'not_selected'
+ * documents.client_selection_source: quién decidió — 'cliente' (portal) | 'ejecutivo' (MAXI-DOCS en monday)
+ *
+ * El ejecutivo sí puede elegir o cambiar la propuesta aprobada desde monday, y
+ * reabrir la elección para que el cliente vuelva a escoger.
  *
  * Las funciones reciben `db` inyectable para poder probarlas contra una base
  * de prueba sin levantar el servidor.
  */
-import { query } from '../db/connection.js';
+import { query, getClient } from '../db/connection.js';
 import { extractQuoteValues } from '../routes/documents.js';
 
 // Una propuesta cuenta como "enviada al cliente" en cualquiera de estos estados
@@ -43,6 +47,7 @@ export function resumenPropuesta(doc) {
     valor_sin_iva:  quote?.totalSinIVA ?? 0,
     valor_con_iva:  quote?.totalConIVA ?? 0,
     seleccion:      doc.client_selection ?? null,
+    aprobada_por:   doc.client_selection === 'approved' ? (doc.client_selection_source || 'cliente') : null,
     seleccionada_en: doc.client_selected_at ?? null,
     creada_en:      doc.created_at ?? null,
   };
@@ -74,7 +79,7 @@ export async function listarPropuestas({ documentId, db = query }) {
   if (!doc) return [];
 
   const columnas = `id, name, doc_number, content_html, filled_data, status,
-                    client_selection, client_selected_at, created_at`;
+                    client_selection, client_selected_at, client_selection_source, created_at`;
   const r = doc.monday_item_id
     ? await db(
         `SELECT ${columnas} FROM documents
@@ -133,7 +138,8 @@ export async function aprobarPropuesta({ signatureId, documentId, db = query }) 
       `UPDATE documents
          SET client_selection   = CASE WHEN id = $1 THEN 'approved' ELSE 'not_selected' END,
              client_selected_at = NOW(),
-             client_selected_by = $3
+             client_selected_by = $3,
+             client_selection_source = 'cliente'
        WHERE id = ANY($2)
          AND NOT EXISTS (
            SELECT 1 FROM documents x WHERE x.id = ANY($2) AND x.client_selection = 'approved'
@@ -178,3 +184,66 @@ export async function contarPropuestasAlEnviar({ documentId, db = query }) {
   const propuestas = await listarPropuestas({ documentId, db });
   return propuestas.length;
 }
+
+/**
+ * El ejecutivo elige la propuesta aprobada desde MAXI-DOCS en monday, o
+ * reabre la elección. A diferencia del cliente, puede cambiar una aprobación
+ * existente.
+ *
+ *   accion = 'aprobar' → esta propuesta queda aprobada y las demás no seleccionadas
+ *   accion = 'reabrir' → ninguna queda elegida; el cliente puede volver a escoger
+ *
+ * Devuelve { ok: true, doc, propuestas } o { ok: false, status, error }.
+ */
+export async function seleccionarPorEjecutivo({ documentId, accion, accountId, isAdmin = false, quien = null, conectar = getClient }) {
+  if (!['aprobar', 'reabrir'].includes(accion)) {
+    return { ok: false, status: 400, error: 'Acción no válida' };
+  }
+  const cx = await conectar();
+  const db = (t, p) => cx.query(t, p);
+  try {
+    const r = await db(`SELECT id, monday_account_id, monday_item_id, status FROM documents WHERE id = $1`, [documentId]);
+    const doc = r.rows[0];
+    if (!doc) return { ok: false, status: 404, error: 'Documento no encontrado' };
+    if (!isAdmin && accountId !== 'dev' && doc.monday_account_id !== accountId) {
+      return { ok: false, status: 403, error: 'No tienes permiso sobre este documento' };
+    }
+    if (accion === 'aprobar' && !ESTADOS_ENVIADOS.includes(doc.status)) {
+      return { ok: false, status: 400, error: 'Primero envía la propuesta al cliente; solo se puede aprobar una propuesta enviada.' };
+    }
+
+    const ids = (await listarPropuestas({ documentId, db })).map(p => p.id);
+
+    await db('BEGIN');
+    // Primero se limpia la elección de toda la oportunidad: así el índice
+    // único (una sola aprobada) nunca ve dos a la vez.
+    await db(
+      `UPDATE documents SET client_selection = NULL, client_selected_at = NULL,
+              client_selected_by = NULL, client_selection_source = NULL
+       WHERE id = ANY($1)`,
+      [ids]
+    );
+    if (accion === 'aprobar') {
+      await db(
+        `UPDATE documents
+           SET client_selection   = CASE WHEN id = $1 THEN 'approved' ELSE 'not_selected' END,
+               client_selected_at = NOW(),
+               client_selected_by = $3,
+               client_selection_source = 'ejecutivo'
+         WHERE id = ANY($2)`,
+        [documentId, ids, quien]
+      );
+    }
+    await db('COMMIT');
+
+    const full = await db(`SELECT * FROM documents WHERE id = $1`, [documentId]);
+    return { ok: true, doc: full.rows[0], propuestas: await listarPropuestas({ documentId, db }) };
+  } catch (e) {
+    await db('ROLLBACK').catch(() => {});
+    if (e.code === '23505') return { ok: false, status: 409, error: 'El cliente acaba de aprobar otra propuesta. Recarga e intenta de nuevo.' };
+    throw e;
+  } finally {
+    cx.release();
+  }
+}
+

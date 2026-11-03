@@ -5,6 +5,7 @@ import { fillTemplate, applyVariables, generatePdf, generateThumbnail, wrapDocum
 import { uploadPdf, buildPdfKey, uploadFile, buildAttachmentKey, deleteFile } from '../services/storageService.js';
 import { buildPricingTableHtml } from '../services/catalogService.js';
 import { monthlyFrom, minTramo, tramoById } from '../services/rateCardService.js';
+import { seleccionarPorEjecutivo } from '../services/propuestasService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { logEvent, hashPdfFile } from '../services/auditService.js';
 
@@ -427,6 +428,21 @@ export async function escribirAprobadaEnMonday(doc) {
   return id;
 }
 
+// El ejecutivo reabrió la elección: la oportunidad vuelve a "Enviado".
+// Los valores y el PDF se quedan hasta que se apruebe otra propuesta.
+export async function marcarReabiertaEnMonday(itemId) {
+  const token = process.env.MONDAY_API_TOKEN;
+  if (!token || !itemId) return;
+  const mutation = `mutation { change_multiple_column_values(board_id: ${MONDAY_COTIZACIONES_BOARD}, item_id: ${itemId}, column_values: ${JSON.stringify(JSON.stringify({ [COL_ESTADO_COT]: { label: 'Enviado' } }))}) { id } }`;
+  const res = await fetch('https://api.monday.com/v2', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body:    JSON.stringify({ query: mutation }),
+  });
+  const data = await res.json();
+  if (data.errors?.length) throw new Error(data.errors[0].message);
+}
+
 // "Duración del Proyecto" se usa como "Plazo" en el correo de revisión. Se
 // busca por id (columna original de Leads) o por título, para que funcione
 // igual en Oportunidades Maxirent sin depender del id de la columna.
@@ -609,7 +625,7 @@ router.get('/', async (req, res) => {
   const result = await query(
     `SELECT id, name, doc_number, template_id, monday_item_id, monday_user_id,
             owner_name, owner_email, status, pdf_url, created_at, updated_at,
-            client_selection, client_selected_at
+            client_selection, client_selected_at, client_selection_source
      FROM documents
      WHERE ${conditions.join(' AND ')}
      ORDER BY updated_at DESC`,
@@ -794,6 +810,34 @@ router.post('/generate', requireEditor, async (req, res) => {
   }
 
   res.status(201).json(doc);
+});
+
+// POST /api/documents/:id/seleccion — el ejecutivo elige la propuesta aprobada
+// de la oportunidad (o cambia la que eligió el cliente), o reabre la elección.
+// Body: { accion: 'aprobar' | 'reabrir', nombre?: nombre del ejecutivo }
+router.post('/:id/seleccion', requireEditor, async (req, res) => {
+  const { accountId, userId, isAdmin } = req.mondayContext;
+  const { accion, nombre } = req.body ?? {};
+  const quien = `${(nombre || '').trim() || `Usuario ${userId}`} (ejecutivo)`;
+
+  const r = await seleccionarPorEjecutivo({ documentId: req.params.id, accion, accountId, isAdmin, quien });
+  if (!r.ok) return res.status(r.status).json({ error: r.error });
+
+  logEvent({
+    documentId: r.doc.id,
+    action:     accion === 'aprobar' ? 'document.approved_by_executive' : 'document.selection_reopened',
+    actor:      { id: userId, name: quien },
+    metadata:   { folio: r.doc.doc_number },
+  });
+
+  // monday en background: no bloquea al ejecutivo
+  if (accion === 'aprobar') {
+    escribirAprobadaEnMonday(r.doc).catch(e => console.error('[Monday] Error escribiendo aprobada:', e.message));
+  } else {
+    marcarReabiertaEnMonday(r.doc.monday_item_id).catch(e => console.error('[Monday] Error reabriendo:', e.message));
+  }
+
+  res.json({ ok: true, propuestas: r.propuestas });
 });
 
 // PUT /api/documents/:id/regenerate — regenera el PDF de un documento existente (mantiene folio)

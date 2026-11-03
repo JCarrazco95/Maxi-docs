@@ -115,6 +115,7 @@ async function ensureColumns() {
     `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS client_selection   VARCHAR(20)`,
     `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS client_selected_at TIMESTAMPTZ`,
     `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS client_selected_by TEXT`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS client_selection_source VARCHAR(20)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_aprobada ON documents (monday_account_id, monday_item_id) WHERE client_selection = 'approved'`,
   ];
   for (const sql of cols) {

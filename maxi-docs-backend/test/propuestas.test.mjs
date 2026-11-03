@@ -9,7 +9,7 @@
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
-import { listarPropuestas, propuestasDelPortal, aprobarPropuesta, propuestaAprobadaDelItem }
+import { listarPropuestas, propuestasDelPortal, aprobarPropuesta, propuestaAprobadaDelItem, seleccionarPorEjecutivo }
   from '../src/services/propuestasService.js';
 
 const URL = process.env.TEST_DATABASE_URL;
@@ -148,3 +148,64 @@ test('una propuesta sin oportunidad de monday se aprueba sola', opts, async () =
   assert.equal(r.ok, true);
   assert.deepEqual(r.descartadas, []);
 });
+
+// ── El ejecutivo elige desde monday ──────────────────────────────
+const ejecutivo = (documentId, accion, extra = {}) =>
+  seleccionarPorEjecutivo({ documentId, accion, accountId: 'A', quien: 'Abigail (ejecutivo)', conectar: () => pool.connect(), ...extra });
+const seleccion = async () => Object.fromEntries(
+  (await db(`SELECT doc_number, client_selection, client_selection_source FROM documents`)).rows
+    .map(r => [r.doc_number, [r.client_selection, r.client_selection_source]]));
+
+test('el ejecutivo aprueba una propuesta sin que el cliente haya elegido', opts, async () => {
+  const a = await crearDoc({ folio: 'MRLP-0001-A' });
+  await crearDoc({ folio: 'MRLP-0001-B' });
+  const r = await ejecutivo(a, 'aprobar');
+  assert.equal(r.ok, true);
+  assert.deepEqual(await seleccion(), {
+    'MRLP-0001-A': ['approved', 'ejecutivo'], 'MRLP-0001-B': ['not_selected', 'ejecutivo'],
+  });
+  const firma = await crearFirma(a);
+  const portal = await propuestasDelPortal({ signatureId: firma, db });
+  assert.equal(portal.aprobada_id, a);
+  assert.equal(portal.propuestas.find(p => p.id === a).aprobada_por, 'ejecutivo');
+});
+
+test('el ejecutivo cambia la propuesta que aprobó el cliente', opts, async () => {
+  const a = await crearDoc({ folio: 'MRLP-0001-A' });
+  const b = await crearDoc({ folio: 'MRLP-0001-B' });
+  await aprobarPropuesta({ signatureId: await crearFirma(a), documentId: a, db });
+  const r = await ejecutivo(b, 'aprobar');
+  assert.equal(r.ok, true);
+  assert.deepEqual(await seleccion(), {
+    'MRLP-0001-A': ['not_selected', 'ejecutivo'], 'MRLP-0001-B': ['approved', 'ejecutivo'],
+  });
+});
+
+test('reabrir deja que el cliente vuelva a elegir', opts, async () => {
+  const a = await crearDoc({ folio: 'MRLP-0001-A' });
+  const b = await crearDoc({ folio: 'MRLP-0001-B' });
+  const firma = await crearFirma(a);
+  await aprobarPropuesta({ signatureId: firma, documentId: a, db });
+  assert.equal((await ejecutivo(a, 'reabrir')).ok, true);
+  assert.deepEqual(await seleccion(), { 'MRLP-0001-A': [null, null], 'MRLP-0001-B': [null, null] });
+  const r = await aprobarPropuesta({ signatureId: firma, documentId: b, db });
+  assert.equal(r.ok, true);
+  assert.deepEqual((await seleccion())['MRLP-0001-B'], ['approved', 'cliente']);
+});
+
+test('el ejecutivo no aprueba un borrador ni documentos de otra cuenta', opts, async () => {
+  const borrador = await crearDoc({ folio: 'MRLP-0001-A', status: 'draft' });
+  assert.equal((await ejecutivo(borrador, 'aprobar')).status, 400);
+  const ajeno = await crearDoc({ folio: 'MRLP-0009-A', cuenta: 'B' });
+  assert.equal((await ejecutivo(ajeno, 'aprobar')).status, 403);
+  assert.equal((await ejecutivo(ajeno, 'borrar')).status, 400);
+  const n = (await db(`SELECT count(*)::int AS n FROM documents WHERE client_selection IS NOT NULL`)).rows[0].n;
+  assert.equal(n, 0);
+});
+
+test('aprobar desde el cliente marca la fuente como cliente', opts, async () => {
+  const a = await crearDoc({ folio: 'MRLP-0001-A' });
+  await aprobarPropuesta({ signatureId: await crearFirma(a), documentId: a, db });
+  assert.deepEqual((await seleccion())['MRLP-0001-A'], ['approved', 'cliente']);
+});
+

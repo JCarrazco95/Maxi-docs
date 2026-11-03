@@ -220,7 +220,9 @@ function DocumentReview({ data, signatureId, onActualizado }) {
         <h2 style={{ margin: '0 0 6px', color: BRAND.navy, fontSize: 21 }}>Hola, {String(data.signature.signer_name || '').split(' ')[0] || 'bienvenido'} 👋</h2>
         <p style={{ color: BRAND.muted, fontSize: 14, margin: 0, lineHeight: 1.55 }}>
           {aprobada
-            ? <>Aprobaste la propuesta <strong>{aprobada.folio || aprobada.nombre}</strong>{aprobada.seleccionada_en ? ` el ${fmtFecha(aprobada.seleccionada_en)}` : ''}. Tu ejecutivo ya recibió tu elección y te contactará para los siguientes pasos.</>
+            ? aprobada.aprobada_por === 'ejecutivo'
+              ? <>Tu ejecutivo registró como aprobada la propuesta <strong>{aprobada.folio || aprobada.nombre}</strong>{aprobada.seleccionada_en ? ` el ${fmtFecha(aprobada.seleccionada_en)}` : ''}. Si no es la que elegiste, contáctalo.</>
+              : <>Aprobaste la propuesta <strong>{aprobada.folio || aprobada.nombre}</strong>{aprobada.seleccionada_en ? ` el ${fmtFecha(aprobada.seleccionada_en)}` : ''}. Tu ejecutivo ya recibió tu elección y te contactará para los siguientes pasos.</>
             : varias
               ? <>Preparamos <strong>{propuestas.length} propuestas</strong> para tu empresa. Compáralas y aprueba la que más te convenga.</>
               : <>Revisa tu propuesta y apruébala si estás de acuerdo.</>}
