@@ -82,6 +82,8 @@ async function send({ to, subject, html, from: fromOverride, replyTo, attachment
 const BRAND_ORANGE = '#CC6227';
 const BRAND_NAVY    = '#1A394C';
 
+const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 function firstNameOf(fullName) {
   return (fullName || '').trim().split(/\s+/)[0] || fullName || '';
 }
@@ -94,7 +96,7 @@ function formatUnidades(unidades) {
 
 function signatureRequestTemplate({
   signerName, documentName, signUrl, senderNote, senderName, senderEmail, expireDays,
-  previewImageUrl, unidades, plazo, totalPropuestas = 1,
+  previewImageUrl, unidades, plazo, totalPropuestas = 1, propuestas = [],
 }) {
   const variasPropuestas = Number(totalPropuestas) > 1;
   const textoBoton = variasPropuestas ? 'Revisar y elegir mi propuesta' : 'Revisar mi cotización';
@@ -124,17 +126,30 @@ function signatureRequestTemplate({
   <!-- Body -->
   <div style="padding:32px;">
     <div style="font-size:11px;font-weight:700;color:${BRAND_ORANGE};text-transform:uppercase;letter-spacing:0.8px;margin:0 0 10px;">
-      Tu propuesta está lista
+      ${variasPropuestas ? 'Tus propuestas están listas' : 'Tu propuesta está lista'}
     </div>
     <p style="font-size:20px;font-weight:700;color:${BRAND_NAVY};margin:0 0 10px;">Hola, ${firstNameOf(signerName)} 👋</p>
     <p style="font-size:14px;color:#5b6b74;line-height:1.6;margin:0 0 24px;">
-      Preparamos una propuesta personalizada de acuerdo con las necesidades de tu empresa.
+      ${variasPropuestas
+        ? 'Preparamos varias propuestas personalizadas de acuerdo con las necesidades de tu empresa.'
+        : 'Preparamos una propuesta personalizada de acuerdo con las necesidades de tu empresa.'}
     </p>
     ${variasPropuestas ? `
     <div style="background:#fbeee8;border:1px solid #f3d3c2;border-radius:8px;padding:12px 16px;margin:-8px 0 24px;font-size:13px;color:${BRAND_NAVY};line-height:1.5;">
       Tienes <strong>${Number(totalPropuestas)} propuestas</strong> para comparar. En el enlace las ves lado a lado y apruebas la que más te convenga.
     </div>` : ''}
 
+    ${variasPropuestas && propuestas.length > 1 ? `
+    <!-- Varias propuestas: una fila por propuesta -->
+    <div style="background:#f4f6f7;border:1px solid #e2e8ec;border-radius:10px;padding:8px 20px;margin-bottom:20px;">
+      ${propuestas.map((p, i) => `
+      <div style="padding:12px 0;${i ? 'border-top:1px solid #e2e8ec;' : ''}">
+        <div style="font-size:11px;font-weight:700;color:${BRAND_ORANGE};letter-spacing:0.4px;margin-bottom:3px;">${esc(p.folio || `Propuesta ${i + 1}`)}</div>
+        <div style="font-size:14px;font-weight:700;color:${BRAND_NAVY};margin-bottom:4px;">${esc(p.nombre)}</div>
+        <div style="font-size:12.5px;color:#5b6b74;">🚚&nbsp; ${esc(formatUnidades(p.unidades))} &nbsp;·&nbsp; 📅&nbsp; ${esc(p.plazo || '—')}</div>
+      </div>`).join('')}
+      <div style="padding:10px 0 6px;border-top:1px solid #e2e8ec;font-size:12.5px;color:#5b6b74;">🧑‍💼&nbsp; Ejecutivo: <strong style="color:${BRAND_NAVY};">${senderName || 'MAXIRent Empresas'}</strong></div>
+    </div>` : `
     <!-- Doc card -->
     <div style="background:#f4f6f7;border:1px solid #e2e8ec;border-radius:10px;padding:20px;margin-bottom:20px;">
       <div style="display:flex;align-items:center;gap:10px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #e2e8ec;">
@@ -157,7 +172,9 @@ function signatureRequestTemplate({
       </table>
     </div>
 
-    ${previewImageUrl ? `
+    `}
+
+    ${previewImageUrl && !(variasPropuestas && propuestas.length > 1) ? `
     <!-- Vista previa de la cotización -->
     <div style="margin:0 0 24px;border:1px solid #e2e8ec;border-radius:10px;overflow:hidden;">
       <img src="${previewImageUrl}" alt="Vista previa de ${documentName}" width="496" style="display:block;width:100%;max-width:496px;height:auto;">
@@ -188,7 +205,7 @@ function signatureRequestTemplate({
     </div>
 
     <p style="text-align:center;font-size:12px;color:#8a97a0;margin:0 0 28px;">
-      🛡️&nbsp; Revisarla no implica compromiso ni aceptación.
+      🛡️&nbsp; ${variasPropuestas ? 'Revisarlas' : 'Revisarla'} no implica compromiso ni aceptación.
     </p>
 
     ${expiryText ? `<p style="text-align:center;font-size:12px;color:#9699a6;margin:0 0 20px;">${expiryText}</p>` : ''}
@@ -297,12 +314,15 @@ export async function sendSignatureRequest({
   unidades,                        // string[] — nombres de las unidades cotizadas
   plazo,                           // string — "Duración del Proyecto" del lead en Monday
   totalPropuestas,                 // number — propuestas de la oportunidad que verá el cliente
+  propuestas,                      // [{ folio, nombre, unidades, plazo }] — se listan si son varias
 }) {
   const portalUrl = buildPortalUrl(signatureId, signUrl);
-  const subject   = `📋 Propuesta comercial: ${documentName}`;
+  const subject   = Number(totalPropuestas) > 1
+    ? `📋 Tus ${Number(totalPropuestas)} propuestas de MAXIRent están listas`
+    : `📋 Propuesta comercial: ${documentName}`;
   const html      = signatureRequestTemplate({
     signerName, documentName, signUrl: portalUrl, senderNote, senderName, senderEmail,
-    expireDays, previewImageUrl, unidades, plazo, totalPropuestas,
+    expireDays, previewImageUrl, unidades, plazo, totalPropuestas, propuestas,
   });
 
   // ── 1. Intentar enviar desde Gmail del vendedor si está conectado ──

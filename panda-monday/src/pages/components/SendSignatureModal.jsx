@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import mondaySdk from 'monday-sdk-js'
 import api from '../../api/client.js'
 import PdfSignatureEditor from './PdfSignatureEditor.jsx'
+import PropuestasAIncluir, { useBorradoresDeOportunidad } from './PropuestasAIncluir.jsx'
 
 const monday = mondaySdk()
 
@@ -16,7 +17,7 @@ const IconEdit  = () => <svg viewBox="0 0 24 24" width="14" height="14" fill="no
 const emptySignerRow = () => ({ name: '', email: '', autoFilled: false })
 
 // ── Paso 1: Configurar firmantes ─────────────────────────────────
-function StepSigners({ document, itemId, signers, setSigners, sequential, setSequential, note, setNote, expire, setExpire, onNext, onClose }) {
+function StepSigners({ document, itemId, signers, setSigners, sequential, setSequential, note, setNote, expire, setExpire, onNext, onClose, extra = null }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -140,6 +141,8 @@ function StepSigners({ document, itemId, signers, setSigners, sequential, setSeq
               </button>
             </div>
 
+            {extra}
+
             {/* Mensaje */}
             <div className="form-group">
               <label className="form-label" style={{ fontSize: 12 }}>
@@ -184,6 +187,8 @@ export default function SendSignatureModal({ document, itemId, onClose, onSent }
   const [expire,     setExpire]     = useState('7')
   const [sending,    setSending]    = useState(false)
   const [sendError,  setSendError]  = useState(null)
+  // Otras propuestas guardadas de la oportunidad que se mandan en el mismo correo
+  const propuestasExtra = useBorradoresDeOportunidad(itemId, document?.id)
 
   // ── Cuando el usuario confirma los campos en el editor ──────────
   async function handleFieldsConfirmed(perSignerFields) {
@@ -207,6 +212,7 @@ export default function SendSignatureModal({ document, itemId, onClose, onSent }
         field_config: flatFields.length > 0 ? flatFields : null,
         expire_days:  expire ? Number(expire) : null,
         sender_note:  note.trim() || null,
+        incluir_ids:  propuestasExtra.incluirIds,
       })
 
       if (itemId) {
@@ -294,6 +300,7 @@ export default function SendSignatureModal({ document, itemId, onClose, onSent }
     <StepSigners
       document={document}
       itemId={itemId}
+      extra={<PropuestasAIncluir {...propuestasExtra} />}
       signers={signers}
       setSigners={setSigners}
       sequential={sequential}
