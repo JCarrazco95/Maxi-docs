@@ -62,10 +62,6 @@ Template (HTML with {{variables}})
   → Notification email sent to document owner
 ```
 
-### Candado de cotización (diagnóstico comercial)
-
-`POST /api/documents/generate` pasa por `requireDiagnostico` ([diagnosticoGate.js](maxi-docs-backend/src/middleware/diagnosticoGate.js)): antes de cotizar pregunta al formulario de diagnóstico (`verificar.php`, hospedado aparte) si el lead (`monday_item_id`) tiene las 5 luces en verde. Incompleto → 409 con `error` = mensaje para el vendedor; sin lead → 400; formulario caído → 503 (o pasa si `DIAGNOSTICO_FAIL_OPEN=true`). Sin `DIAGNOSTICO_URL` el candado está apagado. `GET /api/diagnostico/:itemId` lo usa `DocumentGeneratorModal` para deshabilitar "Abrir editor". `regenerate` no pasa por el candado (la cotización ya existía). Pruebas: `test/diagnostico.test.mjs`.
-
 ### Pricing table custom element
 
 `<pricing-table>` is a custom TipTap node ([PricingTableExtension.js](panda-monday/src/pages/components/PricingTableExtension.js)). Items are serialized as base64 JSON in `data-items-b64` to survive HTML encoding. During PDF generation, `pdfService.processPricingTableNodes()` decodes and expands them via `catalogService.buildPricingTableHtml()`.
@@ -129,3 +125,8 @@ Optional features activate when their keys are present: email (Resend or SMTP), 
 - All DB access uses the `query(sql, params)` pool helper. Never build raw string interpolation — always use `$1, $2` parameters.
 - `logEvent()` from `auditService.js` never throws — failures are caught internally.
 - The `opensign_document_id` column in `signatures` is repurposed to store `fieldConfig` JSON (legacy name, not OpenSign).
+
+### Cotización desde Oportunidades Maxirent
+
+Se cotiza desde los elementos del tablero Oportunidades Maxirent (`8311006777`), no desde Leads. `POST /api/documents/generate` **actualiza** ese mismo elemento (`monday_item_id`) con `change_multiple_column_values` (`actualizarMondayDocItem`): nunca crea ni mueve elementos. Si el elemento no está en Oportunidades, no escribe nada. No pisa el ejecutivo, la razón social ni el correo si ya tienen valor. Al enviar a firma (`signatures.js`, `actualizarOportunidadEnMonday`) solo se actualiza el correo, o el elemento completo si al generar no se pudo. El candado del diagnóstico comercial se quitó: se cotiza sin restricciones. Pruebas: `test/oportunidad.test.mjs`.
+

@@ -7,7 +7,6 @@ import { buildPricingTableHtml } from '../services/catalogService.js';
 import { monthlyFrom, minTramo, tramoById } from '../services/rateCardService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { logEvent, hashPdfFile } from '../services/auditService.js';
-import { requireDiagnostico } from '../middleware/diagnosticoGate.js';
 
 const router = Router();
 
@@ -25,7 +24,6 @@ async function scheduleDocumentThumbnail(documentId, fullHtml) {
 
 // Board principal: Oportunidades Maxirent (maxirent-cast.monday.com)
 const MONDAY_COTIZACIONES_BOARD = '8311006777';
-const MONDAY_COTIZACIONES_GROUP = 'topics'; // "Cotizaciones enviadas"
 
 // Columnas del board Oportunidades Maxirent
 const COL_RAZON_SOCIAL   = 'text_mkvxs7sb';       // Razón social
@@ -42,7 +40,6 @@ const COL_RESPONSABLE    = 'deal_owner';          // Ejecutivo (people)
 const COL_PDF            = 'archivo_mkmghcc4';    // Cotización (file)
 const COL_FOLIO          = 'text_mktmgv5z';       // Folio Pandadoc
 const COL_EMAIL          = 'email';               // Dirección de e-mail principal del contacto
-const COL_LEAD_RELATION  = 'board_relation_mktmg8dz'; // Relación → Leads Maxirent (pulse ID del lead)
 
 /**
  * Resuelve el folio de una cotización.
@@ -225,20 +222,45 @@ export function extractQuoteValues(html) {
   return values;
 }
 
-async function createMondayDocItem({ docNumber, docName, clientName, companyName, clientEmail, mondayLeadId, totalAmount, html, mondayUserId }) {
-  const token = process.env.MONDAY_API_TOKEN;
-  console.log(`[Monday] createMondayDocItem iniciando — token: ${token ? '✅ presente' : '❌ AUSENTE'} | userId: ${mondayUserId}`);
-  if (!token) return null;
-  try {
-    // Nota: 'client' debe declararse ANTES de itemName porque itemName lo usa.
-    const client    = clientName ?? '';
-    // El nombre del item = solo el nombre del lead (sin ' / Propuesta Comercial')
-    const itemName  = client || docName || docNumber || 'Nueva cotización';
-    const today     = new Date().toISOString().split('T')[0];
-    const computed  = totalAmount ?? extractPricingTotal(html);
+// Lee las columnas que MAXI-DOCS no debe pisar si ya tienen valor
+// (hoy solo el ejecutivo responsable de la oportunidad).
+async function leerOportunidad(itemId, token) {
+  const q = `{ items(ids: [${itemId}]) { board { id } column_values(ids: ["${COL_RESPONSABLE}"]) { id text } } }`;
+  const res = await fetch('https://api.monday.com/v2', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body:    JSON.stringify({ query: q }),
+  });
+  const data = await res.json();
+  if (data.errors?.length) throw new Error(data.errors[0].message);
+  const item = data?.data?.items?.[0];
+  if (!item) return null;
+  const responsable = item.column_values?.find(c => c.id === COL_RESPONSABLE)?.text ?? '';
+  return { boardId: String(item.board?.id ?? ''), tieneResponsable: !!responsable.trim() };
+}
 
-    // Extraemos valores estructurados de la cotización para poder mapearlos.
-    // Log detallado — nos sirve para saber qué columnas de Monday mapear.
+/**
+ * Escribe los datos de la cotización en el elemento de Oportunidades Maxirent
+ * desde el que se cotizó. Ya no se crea un elemento nuevo ni se mueve nada:
+ * la cotización se hace desde la oportunidad y solo se actualizan sus columnas.
+ * Devuelve el id del elemento actualizado, o null si no se pudo (no bloquea).
+ */
+export async function actualizarMondayDocItem({ mondayItemId, docNumber, companyName, clientEmail, totalAmount, html, mondayUserId }) {
+  const token = process.env.MONDAY_API_TOKEN;
+  console.log(`[Monday] actualizarMondayDocItem — token: ${token ? '✅ presente' : '❌ AUSENTE'} | item: ${mondayItemId || '—'} | userId: ${mondayUserId}`);
+  if (!token || !mondayItemId) return null;
+  try {
+    const actual = await leerOportunidad(mondayItemId, token);
+    if (!actual) throw new Error(`el elemento ${mondayItemId} no existe`);
+    if (actual.boardId !== MONDAY_COTIZACIONES_BOARD) {
+      console.warn(`[Monday] El elemento ${mondayItemId} está en el tablero ${actual.boardId}, no en Oportunidades Maxirent (${MONDAY_COTIZACIONES_BOARD}). No se actualiza.`);
+      return null;
+    }
+
+    const today    = new Date().toISOString().split('T')[0];
+    const computed = totalAmount ?? extractPricingTotal(html);
+
+    // Valores estructurados de la cotización — el log sirve para revisar el mapeo.
     const quoteValues = extractQuoteValues(html);
     if (quoteValues) {
       console.log(`[Monday:quote] Valores extraídos de la cotización:`);
@@ -253,7 +275,6 @@ async function createMondayDocItem({ docNumber, docName, clientName, companyName
     }
 
     const colValues = {
-      [COL_RAZON_SOCIAL]:       companyName ?? '',
       [COL_RENTA_MENSUAL]:      String(Math.round(quoteValues?.rentaMensual ?? 0)),
       [COL_VALOR_COT]:          String(quoteValues?.totalSinIVA ?? 0),
       [COL_ENTREGA_RECOLECCION]:String(Math.round(quoteValues?.entregaRecoleccion ?? 0)),
@@ -265,36 +286,28 @@ async function createMondayDocItem({ docNumber, docName, clientName, companyName
       [COL_FOLIO]:              docNumber,
     };
 
-    // Dropdown de unidades cotizadas — create_labels_if_missing en la mutation
-    // crea las opciones automáticamente si el nombre de la unidad no existe todavía.
+    // Datos de contacto: solo se escriben si vienen con valor, para no borrar
+    // lo que la oportunidad ya tenía capturado.
+    if (companyName) colValues[COL_RAZON_SOCIAL] = companyName;
+    if (clientEmail) colValues[COL_EMAIL] = { email: clientEmail, text: clientEmail };
+
+    // Dropdown de unidades — create_labels_if_missing crea las opciones nuevas.
     if (quoteValues?.unidades?.length) {
       colValues[COL_UNIDADES] = { labels: quoteValues.unidades };
     }
 
-    if (mondayUserId && mondayUserId !== 'dev') {
+    // El ejecutivo solo se asigna si la oportunidad todavía no tiene uno.
+    if (mondayUserId && mondayUserId !== 'dev' && !actual.tieneResponsable) {
       colValues[COL_RESPONSABLE] = { personsAndTeams: [{ id: Number(mondayUserId), kind: 'person' }] };
     }
 
-    // Dirección de e-mail principal del contacto — viene del filled_data
-    // (correo del cliente que aparece en el item de Monday del que se generó).
-    if (clientEmail) {
-      colValues[COL_EMAIL] = { email: clientEmail, text: clientEmail };
-    }
-
-    // Relación con el item original de "Leads Maxirent" — así el item de
-    // Oportunidades queda enlazado a su lead de origen.
-    if (mondayLeadId) {
-      colValues[COL_LEAD_RELATION] = { item_ids: [Number(mondayLeadId)] };
-    }
-
-    console.log(`[Monday] Enviando mutation — item: ${itemName} | cliente: ${client} | email: ${clientEmail || '—'} | leadId: ${mondayLeadId || '—'} | total: ${computed}`);
+    console.log(`[Monday] Actualizando oportunidad ${mondayItemId} | email: ${clientEmail || '—'} | total: ${computed}`);
 
     const mutation = `
       mutation {
-        create_item(
+        change_multiple_column_values(
           board_id: ${MONDAY_COTIZACIONES_BOARD},
-          group_id: "${MONDAY_COTIZACIONES_GROUP}",
-          item_name: ${JSON.stringify(itemName)},
+          item_id: ${mondayItemId},
           column_values: ${JSON.stringify(JSON.stringify(colValues))},
           create_labels_if_missing: true
         ) { id }
@@ -308,9 +321,9 @@ async function createMondayDocItem({ docNumber, docName, clientName, companyName
     const data = await res.json();
     console.log(`[Monday] Respuesta: ${JSON.stringify(data).slice(0, 300)}`);
     if (data.errors?.length) throw new Error(data.errors[0].message);
-    const mondayItemId = data?.data?.create_item?.id ?? null;
-    console.log(`[Monday] ✅ Item creado: ${mondayItemId}`);
-    return mondayItemId;
+    const id = data?.data?.change_multiple_column_values?.id ?? null;
+    console.log(`[Monday] ✅ Oportunidad actualizada: ${id}`);
+    return id;
   } catch (e) {
     console.error('[Monday] ❌ Error:', e.message, e.stack?.split('\n')[1]);
     return null;
@@ -339,15 +352,17 @@ async function uploadPdfToMondayItem(itemId, pdfBuffer, docNumber) {
   }
 }
 
-// Columna "Duración del Proyecto" en el board Leads Maxirent — se usa como
-// "Plazo" en el correo de revisión. No hace falta el board_id, solo el item.
-const COL_DURACION_PROYECTO = 'texto_mkmftfw4';
+// "Duración del Proyecto" se usa como "Plazo" en el correo de revisión. Se
+// busca por id (columna original de Leads) o por título, para que funcione
+// igual en Oportunidades Maxirent sin depender del id de la columna.
+const COL_DURACION_PROYECTO   = 'texto_mkmftfw4';
+const TITULO_DURACION_PROYECTO = 'duración del proyecto';
 
-async function fetchLeadColumnText(itemId, columnId) {
+async function fetchPlazo(itemId) {
   const token = process.env.MONDAY_API_TOKEN;
   if (!token || !itemId) return null;
   try {
-    const q = `{ items(ids: [${itemId}]) { column_values(ids: ["${columnId}"]) { text } } }`;
+    const q = `{ items(ids: [${itemId}]) { column_values { id text column { title } } } }`;
     const res = await fetch('https://api.monday.com/v2', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', Authorization: token },
@@ -355,9 +370,12 @@ async function fetchLeadColumnText(itemId, columnId) {
     });
     const data = await res.json();
     if (data.errors?.length) throw new Error(data.errors[0].message);
-    return data?.data?.items?.[0]?.column_values?.[0]?.text || null;
+    const cols = data?.data?.items?.[0]?.column_values ?? [];
+    const col  = cols.find(c => c.id === COL_DURACION_PROYECTO)
+              ?? cols.find(c => c.column?.title?.trim().toLowerCase() === TITULO_DURACION_PROYECTO);
+    return col?.text || null;
   } catch (e) {
-    console.warn('[Monday] No se pudo leer columna del lead:', e.message);
+    console.warn('[Monday] No se pudo leer la duración del proyecto:', e.message);
     return null;
   }
 }
@@ -562,9 +580,7 @@ router.get('/:id', async (req, res) => {
 // Acepta dos modos:
 //   a) Clásico: template_id + filled_data → el backend llena las variables
 //   b) Editor:  content_html             → HTML ya editado en el editor del cliente
-// Candado: solo se cotiza un lead con el diagnóstico comercial completo
-// (las 5 luces en verde). Ver services/diagnosticoService.js.
-router.post('/generate', requireEditor, requireDiagnostico(req => req.body?.monday_item_id), async (req, res) => {
+router.post('/generate', requireEditor, async (req, res) => {
   const { accountId, userId } = req.mondayContext;
   const {
     template_id,
@@ -587,10 +603,10 @@ router.post('/generate', requireEditor, requireDiagnostico(req => req.body?.mond
   }
 
   // "Plazo" para el correo de revisión — viene de la columna "Duración del
-  // Proyecto" del lead en Monday (board Leads Maxirent), no de un campo que
-  // llene el vendedor. No bloquea la generación si falla.
+  // Proyecto" de la oportunidad en Monday, no de un campo que llene el
+  // vendedor. No bloquea la generación si falla.
   if (monday_item_id && !filled_data.plazo) {
-    const plazo = await fetchLeadColumnText(monday_item_id, COL_DURACION_PROYECTO);
+    const plazo = await fetchPlazo(monday_item_id);
     if (plazo) filled_data.plazo = plazo;
   }
 
@@ -636,21 +652,16 @@ router.post('/generate', requireEditor, requireDiagnostico(req => req.body?.mond
   // Miniatura para el preview del correo — en background, no bloquea la respuesta
   scheduleDocumentThumbnail(documentId, fullHtml);
 
-  // 6. Crear item en Monday con columnas rellenas — no bloquea si falla
-  // Para el item de Monday: nombre del lead (columna "Oportunidad") + razón
-  // social real (columna "Razón social", puede venir "NA" si es persona
-  // física sin empresa — eso está bien, es distinto de duplicar el nombre)
-  // + correo de contacto + relación al lead.
-  const clientName  = filled_data?.name || filled_data?.nombre || filled_data?.razon_social || '';
+  // 6. Actualizar la oportunidad en Monday con los datos de la cotización.
+  // Se cotiza desde Oportunidades Maxirent: se escribe en ese mismo elemento,
+  // no se crea uno nuevo ni se mueve. No bloquea si falla.
   const companyName = filled_data?.razon_social || '';
   const clientEmail = filled_data?.correo_electronico || filled_data?.email || '';
-  const mondayDocItemId = await createMondayDocItem({
+  const mondayDocItemId = await actualizarMondayDocItem({
+    mondayItemId: monday_item_id,
     docNumber,
-    docName:      name,
-    clientName,
     companyName,
     clientEmail,
-    mondayLeadId: monday_item_id,   // Pulse ID del lead original → para la board_relation
     // storedHtml conserva las <pricing-table> intactas (con data-items-b64);
     // filledHtml ya las expandió a <table> para el PDF y no sirve para extraer
     // los valores de la cotización (extractPricingTotal/extractQuoteValues
