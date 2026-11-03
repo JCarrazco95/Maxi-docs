@@ -342,6 +342,13 @@ export default function DocumentsPage({ itemId, boardId, accountId, userId, user
                     <span className={`badge badge-${doc.status}`}>
                       {STATUS_LABELS[doc.status] ?? doc.status}
                     </span>
+                    {/* Elección del cliente entre las propuestas de la oportunidad */}
+                    {doc.client_selection === 'approved' && (
+                      <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: '#258750' }}>✓ Aprobada por el cliente</div>
+                    )}
+                    {doc.client_selection === 'not_selected' && (
+                      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-tertiary)' }}>No seleccionada</div>
+                    )}
                   </td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: 12, whiteSpace: 'nowrap' }}>
                     {formatDate(doc.created_at)}

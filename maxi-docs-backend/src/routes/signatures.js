@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { query } from '../db/connection.js';
-import { sendSignatureRequest, sendSignedNotification, sendViewedNotification } from '../services/emailService.js';
+import { sendSignatureRequest, sendSignedNotification, sendViewedNotification, sendApprovedNotification } from '../services/emailService.js';
 import { embedSignaturesInPdf, saveSignedPdfLocal } from '../services/selfSignService.js';
 import { logEvent, hashPdfFile, hashBuffer } from '../services/auditService.js';
 import { requireEditor } from '../middleware/mondayAuth.js';
 import { downloadFile } from '../services/storageService.js';
-import { extractQuoteValues } from './documents.js';
+import { extractQuoteValues, escribirAprobadaEnMonday } from './documents.js';
+import { propuestasDelPortal, aprobarPropuesta, contarPropuestasAlEnviar } from '../services/propuestasService.js';
 
 const router = Router();
 
@@ -240,6 +241,8 @@ router.post('/send', requireEditor, async (req, res) => {
   const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:8301';
   const emailAttachments = await loadAttachmentsForEmail(document_id).catch(() => []);
   const { unidades: emailUnidades, plazo: emailPlazo } = extractEmailDisplayData(document);
+  // El cliente verá en su enlace todas las propuestas enviadas de la oportunidad
+  const totalPropuestas = await contarPropuestasAlEnviar({ documentId: document_id }).catch(() => 1);
 
   for (let i = 0; i < signers.length; i++) {
     const signer       = signers[i];
@@ -290,6 +293,7 @@ router.post('/send', requireEditor, async (req, res) => {
         previewImageUrl: document.thumbnail_url || null,
         unidades:     emailUnidades,
         plazo:        emailPlazo,
+        totalPropuestas,
       }).catch(err => console.error('[Email] Error:', err.message));
     }
   }
@@ -375,7 +379,62 @@ router.get('/portal/:signatureId', async (req, res) => {
       name:    row.document_name,
       pdf_url: row.pdf_url,
     },
+    // Todas las propuestas enviadas de la misma oportunidad, para compararlas
+    // y aprobar una. aprobada_id = la que el cliente ya eligió (o null).
+    ...(await propuestasDelPortal({ signatureId: row.id }).catch(e => {
+      console.error('[Propuestas] Error listando:', e.message);
+      return { propuestas: [], aprobada_id: null };
+    })),
   });
+});
+
+// POST /api/signatures/portal/:signatureId/aprobar — el cliente aprueba una propuesta
+// Solo una por oportunidad; las demás quedan como "no seleccionadas".
+router.post('/portal/:signatureId/aprobar', signRateLimit, async (req, res) => {
+  const { signatureId } = req.params;
+  const { document_id } = req.body ?? {};
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuid.test(signatureId) || !uuid.test(document_id ?? '')) {
+    return res.status(400).json({ error: 'Propuesta no válida' });
+  }
+
+  const r = await aprobarPropuesta({ signatureId, documentId: document_id });
+  if (!r.ok) return res.status(r.status).json({ error: r.error, code: r.code, aprobada_id: r.aprobada_id ?? null });
+
+  const doc = r.aprobada;
+  const ip  = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+  logEvent({
+    documentId: doc.id,
+    action:     'document.approved_by_client',
+    actor:      { name: r.firma.signer_name, email: r.firma.signer_email },
+    ip,
+    metadata:   { signature_id: signatureId, folio: doc.doc_number, descartadas: r.descartadas },
+  });
+
+  // Aviso al ejecutivo que armó la propuesta aprobada
+  const notifyEmail = doc.owner_email || process.env.NOTIFY_EMAIL;
+  if (notifyEmail) {
+    sendApprovedNotification({
+      toEmail:      notifyEmail,
+      documentName: doc.name,
+      folio:        doc.doc_number,
+      clientName:   r.firma.signer_name,
+      clientEmail:  r.firma.signer_email,
+      descartadas:  r.descartadas.length,
+    }).catch(e => console.error('[Email] Error aviso de aprobación:', e.message));
+  }
+
+  // En monday queda solo la aprobada — en background, no bloquea al cliente
+  escribirAprobadaEnMonday(doc).catch(e => console.error('[Monday] Error escribiendo aprobada:', e.message));
+
+  callOutgoingWebhook('document.approved', {
+    document: { id: doc.id, name: doc.name, folio: doc.doc_number },
+    client:   { name: r.firma.signer_name, email: r.firma.signer_email },
+    descartadas: r.descartadas,
+  });
+
+  const portal = await propuestasDelPortal({ signatureId });
+  res.json({ ok: true, ...portal });
 });
 
 // GET /api/signatures/:documentId — estado detallado de firmas de un documento

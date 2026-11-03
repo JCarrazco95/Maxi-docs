@@ -9,7 +9,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolverFolio } from '../src/routes/documents.js';
+import { resolverFolio, letraPropuesta, indiceLetra } from '../src/routes/documents.js';
 
 const HTML_LP = '<pricing-table data-table-type="tabulador" data-items-b64="W10="></pricing-table>';
 const HTML_MR = '<pricing-table data-table-type="tarifas" data-items-b64="W10="></pricing-table>';
@@ -21,8 +21,8 @@ function fakeDb(previos = []) {
     const seq = sql.match(/nextval\('(\w+)'\)/);
     if (seq) { seqs[seq[1]] += 1; return { rows: [{ n: seqs[seq[1]] }] }; }
     const [cuenta, item] = params;
-    const hit = previos.find(p => p.account === cuenta && p.item === item && p.folio.startsWith('MRLP-'));
-    return { rows: hit ? [{ doc_number: hit.folio }] : [] };
+    const hits = previos.filter(p => p.account === cuenta && p.item === item && p.folio.startsWith('MRLP-'));
+    return { rows: hits.map(h => ({ doc_number: h.folio })) };
   };
 }
 
@@ -33,36 +33,59 @@ test('la plantilla comercial conserva su serie MR-AÑO-NNNN', async () => {
 
 test('la propuesta LP usa su propia serie MRLP', async () => {
   const folio = await resolverFolio({ srcHtml: HTML_LP, accountId: 'A', mondayItemId: '111', db: fakeDb() });
-  assert.equal(folio, 'MRLP-0001');
+  assert.equal(folio, 'MRLP-0001-A');
 });
 
-test('varias cotizaciones del mismo item comparten folio', async () => {
+test('varias propuestas del mismo item comparten número con letra distinta', async () => {
+  const db = fakeDb([
+    { account: 'A', item: '111', folio: 'MRLP-0007-A' },
+    { account: 'A', item: '111', folio: 'MRLP-0007-B' },
+  ]);
+  const folio = await resolverFolio({ srcHtml: HTML_LP, accountId: 'A', mondayItemId: '111', db });
+  assert.equal(folio, 'MRLP-0007-C');
+});
+
+test('un folio viejo sin letra cuenta como la A', async () => {
   const db = fakeDb([{ account: 'A', item: '111', folio: 'MRLP-0007' }]);
   const folio = await resolverFolio({ srcHtml: HTML_LP, accountId: 'A', mondayItemId: '111', db });
-  assert.equal(folio, 'MRLP-0007');
+  assert.equal(folio, 'MRLP-0007-B');
+});
+
+test('si se borró una propuesta intermedia no se repite letra', async () => {
+  const db = fakeDb([
+    { account: 'A', item: '111', folio: 'MRLP-0007-A' },
+    { account: 'A', item: '111', folio: 'MRLP-0007-C' },
+  ]);
+  const folio = await resolverFolio({ srcHtml: HTML_LP, accountId: 'A', mondayItemId: '111', db });
+  assert.equal(folio, 'MRLP-0007-D');
+});
+
+test('letras después de la Z', () => {
+  assert.deepEqual([0, 1, 25, 26, 27, 51, 52].map(letraPropuesta), ['A', 'B', 'Z', 'AA', 'AB', 'AZ', 'BA']);
+  for (const i of [0, 1, 25, 26, 27, 51, 52, 700]) assert.equal(indiceLetra(`MRLP-0001-${letraPropuesta(i)}`), i);
 });
 
 test('otro item recibe folio nuevo', async () => {
   const db = fakeDb([{ account: 'A', item: '111', folio: 'MRLP-0007' }]);
   const folio = await resolverFolio({ srcHtml: HTML_LP, accountId: 'A', mondayItemId: '222', db });
-  assert.equal(folio, 'MRLP-0001');
+  assert.equal(folio, 'MRLP-0001-A');
 });
 
 test('el folio no se cruza entre cuentas de Monday', async () => {
   const db = fakeDb([{ account: 'A', item: '111', folio: 'MRLP-0007' }]);
   const folio = await resolverFolio({ srcHtml: HTML_LP, accountId: 'B', mondayItemId: '111', db });
-  assert.equal(folio, 'MRLP-0001');
+  assert.equal(folio, 'MRLP-0001-A');
 });
 
 test('sin item de Monday se emite folio nuevo', async () => {
   const folio = await resolverFolio({ srcHtml: HTML_LP, accountId: 'A', mondayItemId: null, db: fakeDb() });
-  assert.equal(folio, 'MRLP-0001');
+  assert.equal(folio, 'MRLP-0001-A');
 });
 
 test('un item numérico se compara igual que uno de texto', async () => {
-  const db = fakeDb([{ account: 'A', item: '111', folio: 'MRLP-0009' }]);
+  const db = fakeDb([{ account: 'A', item: '111', folio: 'MRLP-0009-A' }]);
   const folio = await resolverFolio({ srcHtml: HTML_LP, accountId: 'A', mondayItemId: 111, db });
-  assert.equal(folio, 'MRLP-0009');
+  assert.equal(folio, 'MRLP-0009-B');
 });
 
 test('un HTML vacío cae a la serie de siempre, no revienta', async () => {

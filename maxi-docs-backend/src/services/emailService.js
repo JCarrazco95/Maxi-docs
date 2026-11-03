@@ -94,8 +94,10 @@ function formatUnidades(unidades) {
 
 function signatureRequestTemplate({
   signerName, documentName, signUrl, senderNote, senderName, senderEmail, expireDays,
-  previewImageUrl, unidades, plazo,
+  previewImageUrl, unidades, plazo, totalPropuestas = 1,
 }) {
+  const variasPropuestas = Number(totalPropuestas) > 1;
+  const textoBoton = variasPropuestas ? 'Revisar y elegir mi propuesta' : 'Revisar mi cotización';
   const expiryText  = expireDays ? `Este enlace expira en ${expireDays} días.` : '';
   const contactEmail = senderEmail || process.env.NOTIFY_EMAIL || extractEmail(FROM);
   const contactHref   = `mailto:${contactEmail}?subject=${encodeURIComponent('Consulta sobre mi propuesta: ' + documentName)}`;
@@ -128,6 +130,10 @@ function signatureRequestTemplate({
     <p style="font-size:14px;color:#5b6b74;line-height:1.6;margin:0 0 24px;">
       Preparamos una propuesta personalizada de acuerdo con las necesidades de tu empresa.
     </p>
+    ${variasPropuestas ? `
+    <div style="background:#fbeee8;border:1px solid #f3d3c2;border-radius:8px;padding:12px 16px;margin:-8px 0 24px;font-size:13px;color:${BRAND_NAVY};line-height:1.5;">
+      Tienes <strong>${Number(totalPropuestas)} propuestas</strong> para comparar. En el enlace las ves lado a lado y apruebas la que más te convenga.
+    </div>` : ''}
 
     <!-- Doc card -->
     <div style="background:#f4f6f7;border:1px solid #e2e8ec;border-radius:10px;padding:20px;margin-bottom:20px;">
@@ -169,14 +175,14 @@ function signatureRequestTemplate({
                    href="${signUrl}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="13%" stroke="f" fillcolor="${BRAND_ORANGE}">
         <w:anchorlock/>
         <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">
-          Revisar mi cotización
+          ${textoBoton}
         </center>
       </v:roundrect>
       <![endif]-->
       <!--[if !mso]><!-- -->
       <a href="${signUrl}"
          style="display:block;background-color:${BRAND_ORANGE};color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:6px;font-size:15px;font-weight:700;letter-spacing:0.2px;mso-padding-alt:0;">
-        <span style="color:#ffffff;">👁&nbsp; Revisar mi cotización</span>
+        <span style="color:#ffffff;">👁&nbsp; ${textoBoton}</span>
       </a>
       <!--<![endif]-->
     </div>
@@ -290,12 +296,13 @@ export async function sendSignatureRequest({
   previewImageUrl,                 // URL de la miniatura del documento — opcional
   unidades,                        // string[] — nombres de las unidades cotizadas
   plazo,                           // string — "Duración del Proyecto" del lead en Monday
+  totalPropuestas,                 // number — propuestas de la oportunidad que verá el cliente
 }) {
   const portalUrl = buildPortalUrl(signatureId, signUrl);
   const subject   = `📋 Propuesta comercial: ${documentName}`;
   const html      = signatureRequestTemplate({
     signerName, documentName, signUrl: portalUrl, senderNote, senderName, senderEmail,
-    expireDays, previewImageUrl, unidades, plazo,
+    expireDays, previewImageUrl, unidades, plazo, totalPropuestas,
   });
 
   // ── 1. Intentar enviar desde Gmail del vendedor si está conectado ──
@@ -341,6 +348,34 @@ export async function sendSignedNotification({ toEmail, documentName, pdfUrl, si
     to:      toEmail,
     subject: `✅ Firmado: ${documentName}`,
     html:    documentSignedTemplate({ documentName, pdfUrl, signerName }),
+  });
+}
+
+// Aviso al ejecutivo: el cliente aprobó una de sus propuestas
+export async function sendApprovedNotification({ toEmail, documentName, folio, clientName, clientEmail, descartadas = 0 }) {
+  const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  await send({
+    to:      toEmail,
+    subject: `✅ ${clientName || 'El cliente'} aprobó la propuesta ${folio || documentName}`,
+    html: `
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f2f4f5;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:520px;margin:32px auto;background:white;border-radius:10px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+  <div style="height:4px;background:${BRAND_ORANGE};"></div>
+  <div style="padding:28px 32px;">
+    <div style="font-size:11px;font-weight:700;color:${BRAND_ORANGE};text-transform:uppercase;letter-spacing:0.8px;margin:0 0 10px;">Propuesta aprobada</div>
+    <p style="font-size:18px;font-weight:700;color:${BRAND_NAVY};margin:0 0 12px;">${esc(clientName || 'Tu cliente')} eligió una propuesta ✅</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;background:#f4f6f7;border-radius:8px;padding:12px 16px;">
+      <tr><td style="padding:5px 0;color:#5b6b74;">Propuesta</td><td style="padding:5px 0;color:${BRAND_NAVY};font-weight:700;text-align:right;">${esc(documentName)}</td></tr>
+      <tr><td style="padding:5px 0;color:#5b6b74;">Folio</td><td style="padding:5px 0;color:${BRAND_NAVY};font-weight:700;text-align:right;">${esc(folio || '—')}</td></tr>
+      ${clientEmail ? `<tr><td style="padding:5px 0;color:#5b6b74;">Correo</td><td style="padding:5px 0;color:${BRAND_NAVY};text-align:right;">${esc(clientEmail)}</td></tr>` : ''}
+    </table>
+    <p style="font-size:13px;color:#5b6b74;line-height:1.6;margin:16px 0 0;">
+      ${descartadas > 0 ? `Las otras ${descartadas} propuesta${descartadas === 1 ? '' : 's'} de esta oportunidad quedaron como <strong>no seleccionadas</strong>. ` : ''}La oportunidad en monday ya tiene los datos de la propuesta aprobada.
+    </p>
+  </div>
+</div>
+</body></html>`,
   });
 }
 

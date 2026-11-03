@@ -111,6 +111,11 @@ async function ensureColumns() {
     `ALTER TABLE signatures         ADD COLUMN IF NOT EXISTS signed_at       TIMESTAMPTZ`,
     `ALTER TABLE signatures         ADD COLUMN IF NOT EXISTS time_spent_seconds INT`,
     `ALTER TABLE signatures         ADD COLUMN IF NOT EXISTS signing_order   INT DEFAULT 1`,
+    // Aprobación del cliente entre varias propuestas de la misma oportunidad
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS client_selection   VARCHAR(20)`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS client_selected_at TIMESTAMPTZ`,
+    `ALTER TABLE documents          ADD COLUMN IF NOT EXISTS client_selected_by TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_aprobada ON documents (monday_account_id, monday_item_id) WHERE client_selection = 'approved'`,
   ];
   for (const sql of cols) {
     try { await query(sql); } catch {}
