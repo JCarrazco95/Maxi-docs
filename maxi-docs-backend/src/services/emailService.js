@@ -363,8 +363,26 @@ export async function sendSignatureRequest({
   });
 }
 
-export async function sendSignedNotification({ toEmail, documentName, pdfUrl, signerName }) {
-  await send({
+// Avisos al ejecutivo (vista, aprobación, firma). MAXIRent manda los correos
+// desde el Gmail de cada vendedor: si el dueño del documento tiene Gmail
+// conectado, el aviso sale de su propia cuenta hacia él mismo. Solo si no lo
+// tiene se usa el proveedor configurado (Resend/SMTP).
+async function enviarAviso({ senderAccountId, senderUserId, ...msg }) {
+  if (senderAccountId && senderUserId) {
+    try {
+      if (await hasGmailConnected(senderAccountId, senderUserId)) {
+        return await sendViaGmail({ accountId: senderAccountId, userId: senderUserId, fromName: 'MaxiDocs', ...msg });
+      }
+    } catch (e) {
+      console.warn('[Email] Gmail del vendedor falló para el aviso, fallback:', e.message);
+    }
+  }
+  await send(msg);
+}
+
+export async function sendSignedNotification({ toEmail, documentName, pdfUrl, signerName , senderAccountId, senderUserId}) {
+  await enviarAviso({
+    senderAccountId, senderUserId,
     to:      toEmail,
     subject: `✅ Firmado: ${documentName}`,
     html:    documentSignedTemplate({ documentName, pdfUrl, signerName }),
@@ -372,9 +390,10 @@ export async function sendSignedNotification({ toEmail, documentName, pdfUrl, si
 }
 
 // Aviso al ejecutivo: el cliente aprobó una de sus propuestas
-export async function sendApprovedNotification({ toEmail, documentName, folio, clientName, clientEmail, descartadas = 0 }) {
+export async function sendApprovedNotification({ toEmail, documentName, folio, clientName, clientEmail, descartadas = 0 , senderAccountId, senderUserId}) {
   const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  await send({
+  await enviarAviso({
+    senderAccountId, senderUserId,
     to:      toEmail,
     subject: `✅ ${clientName || 'El cliente'} aprobó la propuesta ${folio || documentName}`,
     html: `
@@ -399,8 +418,9 @@ export async function sendApprovedNotification({ toEmail, documentName, folio, c
   });
 }
 
-export async function sendViewedNotification({ toEmail, documentName, signerName, signerEmail }) {
-  await send({
+export async function sendViewedNotification({ toEmail, documentName, signerName, signerEmail , senderAccountId, senderUserId}) {
+  await enviarAviso({
+    senderAccountId, senderUserId,
     to:      toEmail,
     subject: `👁️ ${signerName} abrió el documento: ${documentName}`,
     html: `

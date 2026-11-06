@@ -352,7 +352,7 @@ router.get('/portal/:signatureId', async (req, res) => {
     `SELECT s.id, s.signer_name, s.signer_email, s.status, s.sign_url, s.signed_at, s.viewed_at,
             s.opensign_document_id AS field_config,
             d.id AS document_id, d.name AS document_name, d.pdf_url, d.monday_account_id,
-            d.owner_email
+            d.monday_user_id, d.owner_email
      FROM signatures s
      JOIN documents d ON d.id = s.document_id
      WHERE s.id = $1`,
@@ -377,6 +377,8 @@ router.get('/portal/:signatureId', async (req, res) => {
     const notifyEmail = row.owner_email || process.env.NOTIFY_EMAIL;
     if (notifyEmail) {
       sendViewedNotification({
+        senderAccountId: row.monday_account_id,
+        senderUserId:    row.monday_user_id,
         toEmail:      notifyEmail,
         documentName: row.document_name,
         signerName:   row.signer_name,
@@ -437,6 +439,8 @@ router.post('/portal/:signatureId/aprobar', signRateLimit, async (req, res) => {
   const notifyEmail = doc.owner_email || process.env.NOTIFY_EMAIL;
   if (notifyEmail) {
     sendApprovedNotification({
+      senderAccountId: doc.monday_account_id,
+      senderUserId:    doc.monday_user_id,
       toEmail:      notifyEmail,
       documentName: doc.name,
       folio:        doc.doc_number,
