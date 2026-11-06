@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../../api/client.js'
 
 /**
@@ -10,6 +10,8 @@ export function useBorradoresDeOportunidad(itemId, excludeId) {
   const [borradores, setBorradores] = useState([])
   const [incluirIds, setIncluirIds] = useState([])
   const [cargado,    setCargado]    = useState(false)
+  const [version,    setVersion]    = useState(0)
+  const borradoresRef = useRef([])
 
   useEffect(() => {
     if (!itemId) { setCargado(true); return }
@@ -19,18 +21,24 @@ export function useBorradoresDeOportunidad(itemId, excludeId) {
         if (!vivo) return
         const lista = (r.data ?? []).filter(d => d.status === 'draft' && d.pdf_url && d.id !== excludeId)
         setBorradores(lista)
-        setIncluirIds(lista.map(d => d.id))
+        // Al recargar se respeta lo que el ejecutivo ya desmarcó; las nuevas van
+        // marcadas. Los ids conocidos se toman ANTES de actualizar la referencia
+        // (el updater de setState corre después).
+        const conocidos = new Set(borradoresRef.current.map(d => d.id))
+        borradoresRef.current = lista
+        setIncluirIds(prev => lista.filter(d => !conocidos.has(d.id) || prev.includes(d.id)).map(d => d.id))
       })
       .catch(() => {})
       .finally(() => vivo && setCargado(true))
     return () => { vivo = false }
-  }, [itemId, excludeId])
+  }, [itemId, excludeId, version])
 
   function alternar(id) {
     setIncluirIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  return { borradores, incluirIds, alternar, cargado }
+  const recargar = () => setVersion(v => v + 1)
+  return { borradores, incluirIds, alternar, cargado, recargar }
 }
 
 export default function PropuestasAIncluir({ borradores, incluirIds, alternar, mostrarAyuda = false }) {

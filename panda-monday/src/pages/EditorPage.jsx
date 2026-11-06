@@ -308,6 +308,10 @@ export default function EditorPage() {
   const [sequential, setSequential] = useState(true)
 
   const [generatedDocId, setGeneratedDocId] = useState(null)
+  // Última propuesta guardada en esta pestaña ("Guardar PDF"): su id y el
+  // contenido con el que se guardó. Si el ejecutivo da "Enviar propuesta" sin
+  // cambiar nada, se envía ESA misma en vez de generar una copia.
+  const [ultimoGuardado, setUltimoGuardado] = useState(null)
   const [sendingSign,    setSendingSign]    = useState(false)
   const [signError,      setSignError]      = useState(null)
 
@@ -564,6 +568,23 @@ export default function EditorPage() {
   }
 
   // ── Enviar propuesta (sin firma — solo revisión) ───────────────
+  // HTML final que se manda a generar (el mismo cálculo para guardar y enviar)
+  function construirHtmlFinal() {
+    // En modo "Solo tablas" mantenemos el template original y solo reemplazamos
+    // las pricing-tables editadas. En modo "Edición libre" el usuario cambió
+    // texto libremente → usamos currentHtml tal cual, pero reinyectamos el
+    // <style> del template porque TipTap lo quita al parsear.
+    return generatorMode
+      ? mergePtItems(session?.templateHtml ?? currentHtml, currentHtml)
+      : ensureTemplateStyle(session?.templateHtml || editorHtml, currentHtml)
+  }
+  const huellaDe = (html, vars) => `${html}\u0000${JSON.stringify(vars ?? {})}`
+  // Id de la propuesta guardada que se enviaría tal cual (sin cambios desde que se guardó)
+  function idQueSeReenviaria() {
+    if (session?.documentId || !ultimoGuardado) return null
+    return ultimoGuardado.huella === huellaDe(construirHtmlFinal(), varValues) ? ultimoGuardado.id : null
+  }
+
   async function handleSendForSign() {
     const validSigners = signers.filter(s => s.name.trim() && s.email.trim())
     if (validSigners.length === 0) {
@@ -573,7 +594,8 @@ export default function EditorPage() {
     }
     // Hay propuestas guardadas de esta oportunidad: antes del primer envío se
     // muestran para que el ejecutivo confirme cuáles van en este mismo correo.
-    if (propuestasExtra.borradores.length && !revisoPropuestas) {
+    const idReusable = idQueSeReenviaria()
+    if (propuestasExtra.borradores.some(d => d.id !== idReusable) && !revisoPropuestas) {
       setActivePanel('recipients')
       setRevisoPropuestas(true)
       setSignError('Revisa qué propuestas guardadas van en este mismo correo y vuelve a dar «Enviar propuesta».')
@@ -586,9 +608,15 @@ export default function EditorPage() {
       // las pricing-tables editadas. En modo "Edición libre" el usuario cambió
       // texto libremente → usamos currentHtml tal cual, pero reinyectamos el
       // <style> del template porque TipTap lo quita al parsear.
-      const finalHtml = generatorMode
-        ? mergePtItems(session?.templateHtml ?? currentHtml, currentHtml)
-        : ensureTemplateStyle(session?.templateHtml || editorHtml, currentHtml)
+      const finalHtml = construirHtmlFinal()
+
+      // Ya se guardó en esta pestaña y no cambió nada → enviar esa misma
+      // propuesta. Antes se generaba otra igual y quedaban duplicadas.
+      if (!session?.documentId && ultimoGuardado?.huella === huellaDe(finalHtml, varValues)) {
+        setGenerating(false)
+        await sendWithFields(ultimoGuardado.id, validSigners)
+        return
+      }
 
       // Modo edición: regenerar documento existente
       const res = session?.documentId
@@ -627,7 +655,7 @@ export default function EditorPage() {
           order: sequential ? i + 1 : 1,
         })),
         field_config: null,
-        incluir_ids:  propuestasExtra.incluirIds,
+        incluir_ids:  propuestasExtra.incluirIds.filter(id => id !== docId),
       })
       setSendingSign(false)
       setSaved(true)
@@ -648,9 +676,15 @@ export default function EditorPage() {
       // En modo "Solo tablas" mantenemos el template original y solo reemplazamos
       // las pricing-tables editadas. En modo "Edición libre" el usuario cambió
       // texto libremente → usamos currentHtml tal cual, sin merge.
-      const finalHtml = generatorMode
-        ? mergePtItems(session.templateHtml ?? currentHtml, currentHtml)
-        : ensureTemplateStyle(session.templateHtml || editorHtml, currentHtml)
+      const finalHtml = construirHtmlFinal()
+      const huella    = huellaDe(finalHtml, varValues)
+
+      // Guardar dos veces sin cambios no crea otra propuesta
+      if (!session.documentId && ultimoGuardado?.huella === huella) {
+        setSaveSuccess(true)
+        setTimeout(() => setSaveSuccess(false), 3000)
+        return
+      }
 
       // Modo edición: regenerar documento existente (mantiene folio)
       const res = session.documentId
@@ -670,6 +704,10 @@ export default function EditorPage() {
           })
 
       setGeneratedDocId(res.data.id)
+      if (!session.documentId) setUltimoGuardado({ id: res.data.id, huella })
+      // La recién guardada ya cuenta como propuesta de la oportunidad: si luego
+      // se arma otra variante en esta misma pestaña, se puede mandar junto con ella.
+      propuestasExtra.recargar()
       try { window.opener?.dispatchEvent(new CustomEvent('mxd-doc-generated', { detail: res.data })) } catch {}
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
@@ -878,7 +916,8 @@ export default function EditorPage() {
                   setSequential={setSequential}
                   onClose={() => setActivePanel(null)}
                   extra={session?.itemId && (
-                    <PropuestasAIncluir {...propuestasExtra} mostrarAyuda />
+                    <PropuestasAIncluir {...propuestasExtra} mostrarAyuda
+                      borradores={(() => { const id = idQueSeReenviaria(); return propuestasExtra.borradores.filter(d => d.id !== id) })()} />
                   )}
                 />
               )}
