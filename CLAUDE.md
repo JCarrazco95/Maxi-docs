@@ -138,3 +138,7 @@ El ejecutivo también elige desde MAXI-DOCS en monday (lista de documentos → "
 
 Varias propuestas en UN solo correo: el ejecutivo guarda las propuestas con "Guardar PDF" (borradores) y al enviar la última, el editor (panel Destinatarios) y el modal "Enviar a firma" listan las demás guardadas de la oportunidad, marcadas por defecto (`PropuestasAIncluir.jsx`). `POST /api/signatures/send` recibe `incluir_ids`: solo borradores con PDF de la misma cuenta + item pasan a `sent` (`incluirPropuestasEnEnvio`); se manda un solo correo que lista todas las propuestas. Vigencia: la propuesta LP (tabla "tabulador") vale 30 días; las demás plantillas, 15 (EditorPage).
 
+### Plantillas
+
+Solo se siembra la "Propuesta de Renta Empresarial (LP)". La "Propuesta Comercial MAXIRent" se retiró: el seed (`POST /api/templates/seed`) borra de cada cuenta las plantillas de `PLANTILLAS_RETIRADAS`; los documentos hechos con ellas conservan su contenido y PDF (`template_id` → NULL). La LP tiene un cuadro **NOTAS** (pricing-table `data-table-type="notas"`, un item `{ id, text }`) entre las tarjetas Tarifa vigente / Pago inicial y UNIDADES PROPUESTAS: editable en "Solo tablas", y si queda vacío no sale en el PDF. Pruebas: `test/notas.test.mjs`.
+

@@ -30,132 +30,7 @@ const LP_FOOTER = 'https://analy-sys.pro/wp-content/uploads/2026/08/02-footer-ba
 const LP_MASCOTA_HERO   = 'https://analy-sys.pro/wp-content/uploads/2026/08/03-mascota-brazos-cruzados.png';
 const LP_MASCOTA_APUNTA = 'https://analy-sys.pro/wp-content/uploads/2026/08/04-mascota-senalando-1.png';
 
-// ── Plantilla actual: Propuesta Comercial MAXIRent ────────────────
-// COPIA VERBATIM de lo que había en routes/templates.js. No reformatear:
-// el seed sobrescribe la plantilla en producción cada vez que alguien abre
-// la pestaña Plantillas, así que cualquier cambio accidental aquí se
-// publica solo.
-const PROPUESTA_COMERCIAL_HTML = `<style>
-  @page { margin: 0; }
-  html, body { margin: 0 !important; padding: 0 !important; }
-  .mr, .mr * { box-sizing: border-box; }
-  .mr { font-family: Arial, Helvetica, sans-serif; font-size:9.5pt; color:#222; }
-  /* ── Layout por página: márgenes manejados en CSS, @page anula los de Puppeteer ── */
-  .mr-page {
-    display: flex;
-    flex-direction: column;
-    min-height: 296mm;
-  }
-  .mr-page-content { flex: 1; padding: 0 15mm; }
-  /* ── Full-bleed: 100% del ancho físico del A4 ── */
-  .mr-full-bleed {
-    display: block;
-    width: 100%;
-  }
-  /* Header pegado al borde superior */
-  .mr-page-header { margin-bottom: 6px; }
-  /* Footer empujado al borde inferior */
-  .mr-page-footer { margin-top: auto; }
-  /* Página publicitaria: imagen A4 completa */
-  .mr-ad-page {
-    page-break-before: always;
-    height: 296mm;
-    width: 100%;
-    overflow: hidden;
-  }
-  .mr-ad-page img { display:block; width:100%; height:100%; object-fit:cover; }
-  .mr-header-info { display:flex; justify-content:space-between; align-items:flex-start; margin:0 0 10px; font-size:9.5pt; }
-  .mr-bold { font-weight:700; }
-  .mr-intro { font-size:9.5pt; line-height:1.55; margin:10px 0 14px; text-align:justify; }
-  .mr-obs-label { font-size:9pt; font-weight:700; margin:10px 0 3px; }
-  .mr-obs { border:1px solid #ccc; padding:8px 10px; font-size:9pt; min-height:30px; margin:0 0 14px; border-radius:2px; line-height:1.5; }
-  .mr-firma-box { border:2px dashed #555; width:220px; height:72px; margin:18px 0; border-radius:4px; }
-  .mr-nota { font-size:8pt; color:#444; text-decoration:underline; margin-top:18px; line-height:1.5; }
-  .mr-h3 { color:#1B3055; font-size:10pt; font-weight:700; margin:14px 0 5px; }
-  .mr-h4 { color:#F5A000; font-size:10pt; font-weight:700; margin:12px 0 4px; }
-  .mr-ul { margin:4px 0 10px; padding-left:18px; font-size:9pt; line-height:1.6; }
-  .mr-check { list-style:none; padding:0; margin:4px 0 10px; font-size:9pt; }
-  .mr-check li::before { content:"✓ "; color:#1B3055; font-weight:700; }
-  .mr-rep { text-align:right; margin-top:20px; font-size:9.5pt; line-height:1.7; }
-  .pt-header { background:#F5A000 !important; }
-  .pt-header .pt-title { color:white !important; }
-</style>
-<div class="mr">
-
-<!-- ══════ PÁGINA 1 ══════ -->
-<div class="mr-page">
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-01.png" class="mr-full-bleed mr-page-header" />
-  <div class="mr-page-content">
-    <div class="mr-header-info">
-      <div>
-        <p style="margin:3px 0;"><span class="mr-bold">CLIENTE: </span>{{razon_social}}</p>
-        <p style="margin:3px 0;"><span class="mr-bold">ATENCIÓN: </span>{{name}}</p>
-      </div>
-      <div style="text-align:right;">
-        <p style="margin:3px 0;"><span class="mr-bold">Fecha de elaboración </span>{{fecha}}</p>
-        <p style="margin:3px 0;"><span class="mr-bold">Fecha de vigencia </span>{{fecha_vigencia}}</p>
-      </div>
-    </div>
-    <p class="mr-intro">Presentamos una solución integral para la renta y administración de flota vehicular.</p>
-    <pricing-table data-title="TARIFAS" data-table-type="tarifas" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
-    <p class="mr-obs-label">Observaciones:</p>
-    <div class="mr-obs">Se requiere Pago por anticipado 30 días, garantía de 30 días + Firma de contrato + Firma pagaré</div>
-    <pricing-table data-title="ADECUACIONES" data-table-type="accesorios" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
-    <pricing-table data-title="VALOR DEL ACUERDO INICIAL" data-table-type="acuerdo" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
-    <h3 class="mr-h3">Condiciones comerciales</h3>
-    <ul class="mr-ul">
-      <li>Tarifas de rentas, traslados y/o adecuaciones son más IVA</li>
-      <li>Seguro con deducible del 0% o el 10% acorde a la tarifa pactada</li>
-      <li>Pago anticipado mensual (30 días) y meses subsecuentes</li>
-      <li>Los accesorios pasan a ser propiedad del cliente</li>
-    </ul>
-    <div class="mr-firma-box"></div>
-    <p class="mr-nota">**Nota: La firma no implica compromiso de compra. Vigencia 15 días.</p>
-  </div>
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" class="mr-full-bleed mr-page-footer" />
-</div>
-
-<!-- ══════ PÁGINA 2 ══════ -->
-<div class="mr-page" style="page-break-before:always; padding-top:15mm;">
-  <div class="mr-page-content">
-    <h3 class="mr-h3">Requisitos para entrega de unidades</h3>
-    <ul class="mr-ul">
-      <li>Cubrir primer mes de renta y costo por entrega</li>
-      <li>Retención de Garantía de 30 días de renta</li>
-      <li>Firma de contrato, Carta Cobertura y pagaré</li>
-    </ul>
-    <h3 class="mr-h3">SERVICIOS BÁSICOS INCLUIDOS</h3>
-    <ul class="mr-ul">
-      <li>Kilometraje libre en cualquier parte de la república mexicana</li>
-      <li>Cambio llantas sin costo llegando a los 60,000 km</li>
-      <li>Mantenimientos correctivos y preventivos</li>
-      <li>Seguro de auto con cobertura a terceros</li>
-      <li>GPS en cada vehículo con cuenta espejo</li>
-    </ul>
-    <h3 class="mr-h3">Beneficios para su empresa</h3>
-    <ul class="mr-check">
-      <li><strong style="color:#1B3055;">Flota siempre</strong> disponible y operativa</li>
-      <li><strong style="color:#1B3055;">Evitas</strong> costos imprevistos</li>
-      <li><strong style="color:#1B3055;">Sin inversión</strong> en compra de vehículos</li>
-      <li><strong style="color:#1B3055;">Control</strong> y visibilidad total de sus operadores</li>
-    </ul>
-    <div class="mr-rep">
-      <p style="margin:2px 0;font-weight:700;">{{ejecutivo}}</p>
-      <p style="margin:2px 0;">Ejecutivo Comercial</p>
-      <p style="margin:2px 0;">{{correo_electronico}}</p>
-    </div>
-  </div>
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-03.png" class="mr-full-bleed mr-page-footer" />
-</div>
-
-<!-- ══════ PÁGINA 3 — PUBLICITARIA (full A4) ══════ -->
-<div class="mr-ad-page">
-  <img src="https://analy-sys.pro/wp-content/uploads/2026/05/PRES_cotizacion_update-02.png" alt="MAXIRent — propuesta de valor" />
-</div>
-
-</div>`;
-
-// ── Plantilla nueva: Propuesta de Renta Empresarial (LP) ──────────
+// ── Propuesta de Renta Empresarial (LP) ───────────────────────────
 const PROPUESTA_LP_HTML = `<style>
   @page { margin: 0; }
   html, body { margin: 0 !important; padding: 0 !important; }
@@ -299,6 +174,8 @@ const PROPUESTA_LP_HTML = `<style>
         <div class="lp-card-body">Se definen conforme a las condiciones particulares.</div>
       </div>
     </div>
+
+    <pricing-table data-title="NOTAS" data-table-type="notas" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
 
     <pricing-table data-title="UNIDADES PROPUESTAS" data-table-type="tabulador" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
     <pricing-table data-title="SERVICIO DE TRASLADO" data-table-type="costos" data-items-b64="W10=" data-iva-rate="16"></pricing-table>
@@ -465,12 +342,15 @@ const PROPUESTA_LP_HTML = `<style>
 
 </div>`;
 
+// Plantillas que ya no se usan: el seed las borra de cada cuenta. Los
+// documentos que se hicieron con ellas conservan su contenido y su PDF
+// (documents.template_id queda en NULL por ON DELETE SET NULL).
+export const PLANTILLAS_RETIRADAS = [
+  'Propuesta Comercial MAXIRent',
+  'Propuesta Comercial MAXIRent v2',
+];
+
 export const SEED_TEMPLATES = [
-  {
-    name:         'Propuesta Comercial MAXIRent',
-    description:  'Plantilla oficial MAXIRent — TARIFAS, ADECUACIONES y VALOR DEL ACUERDO',
-    content_html: PROPUESTA_COMERCIAL_HTML,
-  },
   {
     name:         'Propuesta de Renta Empresarial (LP)',
     description:  'Propuesta de renta empresarial con precios del tabulador por plazo — '

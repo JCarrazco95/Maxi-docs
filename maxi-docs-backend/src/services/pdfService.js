@@ -108,6 +108,19 @@ export function processPricingTableNodes(html) {
         const tblStyle  = `width:100%;border-collapse:collapse;font-family:Arial,sans-serif;margin:8px 0;border:1px solid #e5e7eb;`
         const tbl       = (head,body,foot='') => `<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;margin:4px 0;">${head}${body}${foot}</table>`
 
+        // ── TIPO NOTAS — cuadro de texto libre de la propuesta LP ──
+        // El ejecutivo lo llena en el editor. Si quedó vacío no se imprime:
+        // un recuadro en blanco en la propuesta se ve como un error.
+        if (tableType === 'notas') {
+          const texto = String(items?.[0]?.text ?? '').trim()
+          if (!texto) return ''
+          const esc = v => v.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+          return `<div style="border:1px solid #D7E4E8;border-radius:5px;padding:8px 14px;margin:7px 0 3px;">
+            <div style="font-size:8pt;font-weight:700;color:#607078;letter-spacing:0.7px;text-transform:uppercase;margin-bottom:4px;">${esc(title)}</div>
+            <div style="font-size:9pt;color:#2B3A40;line-height:1.45;white-space:pre-wrap;">${esc(texto)}</div>
+          </div>`
+        }
+
         // ── TIPO RESUMEN — hero de la propuesta LP, auto calculado ──
         // No tiene items propios: lee la tabla tabulador del documento. Se
         // renderiza siempre, aunque esté en cero, porque es el

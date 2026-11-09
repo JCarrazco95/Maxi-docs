@@ -970,6 +970,33 @@ function PricingTableViewInner({ node, updateAttributes, selected, editor }) {
     )
   }
 
+  // ── TIPO NOTAS — cuadro de texto libre de la propuesta LP ────
+  // Un solo item { id, text }. Es editable también en "Solo tablas", como
+  // cualquier pricing-table. Si se deja vacío no sale en el PDF.
+  if (tableType === 'notas') {
+    const texto = items[0]?.text ?? ''
+    const guardar = val => saveItems([{ id: items[0]?.id ?? 1, text: val }])
+    return (
+      <NodeViewWrapper>
+        <div className={`pt-block ${selected ? 'pt-block-selected' : ''}`} contentEditable={false}
+          style={{ border:'1px solid #D7E4E8', borderRadius:6, padding:'9px 14px', background:'#FFFFFF' }}>
+          <div style={{ fontSize:10, fontWeight:700, color:'#607078', letterSpacing:0.7, textTransform:'uppercase', marginBottom:5 }}>
+            {title || 'Notas'}
+          </div>
+          <textarea
+            value={texto}
+            onChange={e => guardar(e.target.value)}
+            placeholder="Escribe aquí las notas para el cliente (opcional). Si lo dejas vacío, no aparece en la propuesta."
+            rows={3}
+            style={{ width:'100%', boxSizing:'border-box', resize:'vertical', border:'1px dashed #C9D6DB',
+              borderRadius:4, padding:'7px 9px', fontSize:12.5, lineHeight:1.45, color:'#2B3A40',
+              fontFamily:'inherit', background:'#FBFCFD' }}
+          />
+        </div>
+      </NodeViewWrapper>
+    )
+  }
+
   // ── TIPO RESUMEN — hero de la propuesta LP, auto-calculado ───
   // No tiene items propios: lee las tablas tabulador + adicionales del
   // documento, igual que hace 'acuerdo' con tarifas + accesorios.

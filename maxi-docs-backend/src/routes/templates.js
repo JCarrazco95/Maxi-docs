@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db/connection.js';
 import { extractVariables, generateThumbnail, wrapDocumentHtml } from '../services/pdfService.js';
-import { SEED_TEMPLATES } from '../templates/seedTemplates.js';
+import { SEED_TEMPLATES, PLANTILLAS_RETIRADAS } from '../templates/seedTemplates.js';
 
 // Genera thumbnail en background sin bloquear la respuesta
 async function scheduleThumbnail(templateId, contentHtml) {
@@ -101,11 +101,12 @@ router.put('/:id', async (req, res) => {
 router.post('/seed', async (req, res) => {
   const { accountId, userId } = req.mondayContext;
 
-  // Renombrar v2 → sin v2 (arrastre de una versión vieja)
+  // Quitar las plantillas oficiales que ya no se usan (la comercial vieja).
+  // Los documentos hechos con ellas se conservan: template_id → NULL.
   await query(
-    `UPDATE templates SET name = $1 WHERE monday_account_id = $2 AND name = 'Propuesta Comercial MAXIRent v2'`,
-    ['Propuesta Comercial MAXIRent', accountId]
-  ).catch(() => {});
+    `DELETE FROM templates WHERE monday_account_id = $1 AND name = ANY($2)`,
+    [accountId, PLANTILLAS_RETIRADAS]
+  ).catch(e => console.warn('[Templates] No se pudieron retirar plantillas viejas:', e.message));
 
   const results = [];
 
