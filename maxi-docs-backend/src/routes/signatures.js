@@ -451,7 +451,8 @@ router.post('/portal/:signatureId/aprobar', signRateLimit, async (req, res) => {
   }
 
   // En monday queda solo la aprobada — en background, no bloquea al cliente
-  escribirAprobadaEnMonday(doc).catch(e => console.error('[Monday] Error escribiendo aprobada:', e.message));
+  escribirAprobadaEnMonday(doc, { clientEmail: r.firma.signer_email || '' })
+    .catch(e => console.error('[Monday] Error escribiendo aprobada:', e.message));
 
   callOutgoingWebhook('document.approved', {
     document: { id: doc.id, name: doc.name, folio: doc.doc_number },

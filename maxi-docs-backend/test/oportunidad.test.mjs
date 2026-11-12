@@ -62,3 +62,26 @@ test('sin elemento de monday no hace nada', async () => {
   assert.equal(await actualizarMondayDocItem({ mondayItemId: null, docNumber: 'X', html }), null);
   assert.equal(llamadas.length, 0);
 });
+
+// {{correo_electronico}} es el correo del EJECUTIVO: nunca debe acabar en la
+// columna Email de la oportunidad (que es la del cliente).
+import { escribirAprobadaEnMonday } from '../src/routes/documents.js';
+
+const docAprobado = {
+  id: 'd1', monday_item_id: '555', doc_number: 'MRLP-0001-B', monday_user_id: '42',
+  content_html: html, created_at: '2026-11-12T10:00:00Z',
+  filled_data: JSON.stringify({ correo_electronico: 'marco.elizondo@maxirent.com.mx', razon_social: 'Instala SA' }),
+};
+
+test('al aprobar no se escribe el correo del ejecutivo en la oportunidad', async () => {
+  await escribirAprobadaEnMonday(docAprobado);
+  const cols = columnas(llamadas.find(q => q.trim().startsWith('mutation')));
+  assert.equal(cols.email, undefined);
+  assert.equal(cols.text_mkvxs7sb, 'Instala SA');
+});
+
+test('al aprobar desde el portal se escribe el correo del cliente que aprobó', async () => {
+  await escribirAprobadaEnMonday(docAprobado, { clientEmail: 'trafico@instala.com.mx' });
+  const cols = columnas(llamadas.find(q => q.trim().startsWith('mutation')));
+  assert.deepEqual(cols.email, { email: 'trafico@instala.com.mx', text: 'trafico@instala.com.mx' });
+});

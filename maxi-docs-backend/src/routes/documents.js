@@ -398,7 +398,7 @@ async function vaciarPdfsDeMondayItem(itemId) {
  * pasa a "Aprobada" y la columna de cotización se queda solo con su PDF.
  * No bloquea: un error se registra y la aprobación sigue valiendo en MAXI-DOCS.
  */
-export async function escribirAprobadaEnMonday(doc) {
+export async function escribirAprobadaEnMonday(doc, { clientEmail = '' } = {}) {
   if (!doc?.monday_item_id) return null;
   let filled = {};
   try { filled = typeof doc.filled_data === 'string' ? JSON.parse(doc.filled_data) : (doc.filled_data ?? {}); } catch {}
@@ -408,7 +408,9 @@ export async function escribirAprobadaEnMonday(doc) {
     mondayItemId: doc.monday_item_id,
     docNumber:    doc.doc_number,
     companyName:  filled.razon_social || '',
-    clientEmail:  filled.correo_electronico || filled.email || '',
+    // Solo el correo de quien aprobó desde el portal (el cliente). Nunca
+    // filled_data.correo_electronico: ese es el correo del ejecutivo.
+    clientEmail,
     html:         doc.content_html,
     mondayUserId: doc.monday_user_id,
     aprobada:     true,
@@ -748,7 +750,11 @@ router.post('/generate', requireEditor, async (req, res) => {
   // Se cotiza desde Oportunidades Maxirent: se escribe en ese mismo elemento,
   // no se crea uno nuevo ni se mueve. No bloquea si falla.
   const companyName = filled_data?.razon_social || '';
-  const clientEmail = filled_data?.correo_electronico || filled_data?.email || '';
+  // El correo del cliente NO se escribe al generar: en la plantilla,
+  // {{correo_electronico}} es el correo del EJECUTIVO (variable automática del
+  // vendedor), no del cliente. El correo del cliente llega al enviar (el del
+  // destinatario) y se escribe en signatures.js.
+  const clientEmail = '';
   // Si el cliente ya aprobó una propuesta de esta oportunidad, monday conserva
   // la aprobada: la nueva cotización se guarda en MAXI-DOCS pero no la pisa.
   const yaAprobada = monday_item_id
