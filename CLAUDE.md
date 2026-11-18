@@ -62,6 +62,10 @@ Template (HTML with {{variables}})
   → Notification email sent to document owner
 ```
 
+### Candado de cotización (diagnóstico comercial)
+
+`POST /api/documents/generate` pasa por `requireDiagnostico` ([diagnosticoGate.js](maxi-docs-backend/src/middleware/diagnosticoGate.js)): antes de cotizar pregunta al formulario de diagnóstico (`verificar.php`, hospedado aparte) si el lead (`monday_item_id`) tiene las 5 luces en verde. Incompleto → 409 con `error` = mensaje para el vendedor; sin lead → 400; formulario caído → 503 (o pasa si `DIAGNOSTICO_FAIL_OPEN=true`). Sin `DIAGNOSTICO_URL` el candado está apagado. `GET /api/diagnostico/:itemId` lo usa `DocumentGeneratorModal` para deshabilitar "Abrir editor". `regenerate` no pasa por el candado (la cotización ya existía). Pruebas: `test/diagnostico.test.mjs`.
+
 ### Pricing table custom element
 
 `<pricing-table>` is a custom TipTap node ([PricingTableExtension.js](panda-monday/src/pages/components/PricingTableExtension.js)). Items are serialized as base64 JSON in `data-items-b64` to survive HTML encoding. During PDF generation, `pdfService.processPricingTableNodes()` decodes and expands them via `catalogService.buildPricingTableHtml()`.

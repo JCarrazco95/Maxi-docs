@@ -22,6 +22,8 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
   const [itemName,    setItemName]    = useState('')
   const [error,       setError]       = useState(null)
   const [opening,     setOpening]     = useState(false)
+  // Candado de cotización: { cargando, listo, mensaje } — ver backend routes/diagnostico.js
+  const [diag,        setDiag]        = useState({ cargando: true, listo: false, mensaje: '' })
 
   useEffect(() => {
     api.get('/api/templates')
@@ -29,6 +31,30 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
       .catch(() => setError('Error cargando plantillas'))
       .finally(() => setLoadingTpl(false))
   }, [])
+
+  // ¿El lead tiene el diagnóstico comercial completo? Sin él no se puede cotizar.
+  useEffect(() => {
+    let vivo = true
+    if (!itemId) {
+      // Sin lead no hay diagnóstico que validar: si el candado está activo, no se puede cotizar aquí
+      api.get('/api/diagnostico')
+        .then(r => vivo && setDiag({
+          cargando: false,
+          listo:    !r.data.activo,
+          mensaje:  'Abre la cotización desde el lead en monday para poder validar su diagnóstico comercial.',
+        }))
+        .catch(() => vivo && setDiag({ cargando: false, listo: true, mensaje: '' }))
+      return () => { vivo = false }
+    }
+    api.get(`/api/diagnostico/${itemId}`)
+      .then(r => vivo && setDiag({ cargando: false, listo: r.data.listo, mensaje: r.data.mensaje }))
+      .catch(e => vivo && setDiag({
+        cargando: false,
+        listo:    false,
+        mensaje:  e.response?.data?.mensaje || 'No se pudo validar el diagnóstico comercial del lead.',
+      }))
+    return () => { vivo = false }
+  }, [itemId])
 
   useEffect(() => {
     if (!itemId) return
@@ -48,6 +74,7 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
 
   async function handleOpenEditor() {
     if (!selectedTpl) { setError('Selecciona una plantilla'); return }
+    if (!diag.listo)  { setError(diag.mensaje || 'Completa el diagnóstico comercial antes de cotizar.'); return }
     const name = docName.trim() || (itemName ? `${selectedTpl.name} — ${itemName}` : selectedTpl.name)
     setError(null); setOpening(true)
 
@@ -102,6 +129,17 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
           {error && (
             <div className="error-msg" style={{ marginBottom: 12 }}>
               <IconAlert /> {error}
+            </div>
+          )}
+
+          {/* Candado de cotización: el lead necesita el diagnóstico completo */}
+          {!diag.cargando && !diag.listo && !error && (
+            <div className="error-msg" style={{ marginBottom: 12 }}>
+              <IconAlert />
+              <div>
+                <div>{diag.mensaje || 'Completa el diagnóstico comercial antes de cotizar.'}</div>
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>Complétalo en la pestaña Diagnóstico del lead y vuelve a abrir esta ventana.</div>
+              </div>
             </div>
           )}
 
@@ -181,11 +219,14 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
           <button
             className="btn btn-primary"
             onClick={handleOpenEditor}
-            disabled={!selectedTpl || opening}
+            disabled={!selectedTpl || opening || diag.cargando || !diag.listo}
+            title={!diag.cargando && !diag.listo ? 'Completa el diagnóstico comercial del lead para poder cotizar' : undefined}
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           >
             {opening
               ? <><span className="spinner-sm" /> Abriendo…</>
+              : diag.cargando
+              ? <><span className="spinner-sm" /> Validando diagnóstico…</>
               : <><IconOpen /> Abrir editor</>
             }
           </button>
