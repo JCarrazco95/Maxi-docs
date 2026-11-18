@@ -2,7 +2,7 @@
  * Candado de cotización — diagnóstico comercial de MAXIRent.
  *
  * Antes de generar una cotización se pregunta al formulario de diagnóstico
- * (verificar.php, hospedado aparte) si el lead tiene las 5 luces del semáforo
+ * (verificar.php, hospedado aparte) si la oportunidad tiene en verde las secciones obligatorias del semáforo (el Meet es opcional)
  * en verde: Dolor, Alcance, Impacto, Decisión y Meet agendado. El formulario
  * lo recalcula con las respuestas guardadas en monday, así que cambiar a mano
  * la columna "Estatus diagnóstico" no abre el candado.
@@ -69,7 +69,7 @@ export async function evaluarCandado(itemId, opts = {}) {
       permitido: false,
       status: 400,
       body: {
-        error: 'Abre la cotización desde el lead en monday para poder validar su diagnóstico comercial.',
+        error: 'Abre la cotización desde la oportunidad en monday para poder validar su diagnóstico comercial.',
         code:  'DIAGNOSTICO_SIN_LEAD',
       },
     };
@@ -95,7 +95,7 @@ export async function evaluarCandado(itemId, opts = {}) {
       permitido: false,
       status: 503,
       body: {
-        error: 'No se pudo validar el diagnóstico comercial del lead. Intenta de nuevo en un momento.',
+        error: 'No se pudo validar el diagnóstico comercial de la oportunidad. Intenta de nuevo en un momento.',
         code:  'DIAGNOSTICO_NO_DISPONIBLE',
       },
     };

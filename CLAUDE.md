@@ -64,7 +64,7 @@ Template (HTML with {{variables}})
 
 ### Candado de cotización (diagnóstico comercial)
 
-`POST /api/documents/generate` pasa por `requireDiagnostico` ([diagnosticoGate.js](maxi-docs-backend/src/middleware/diagnosticoGate.js)): antes de cotizar pregunta al formulario de diagnóstico (`verificar.php`, hospedado aparte) si el lead (`monday_item_id`) tiene las 5 luces en verde. Incompleto → 409 con `error` = mensaje para el vendedor; sin lead → 400; formulario caído → 503 (o pasa si `DIAGNOSTICO_FAIL_OPEN=true`). Sin `DIAGNOSTICO_URL` el candado está apagado. `GET /api/diagnostico/:itemId` lo usa `DocumentGeneratorModal` para deshabilitar "Abrir editor". `regenerate` no pasa por el candado (la cotización ya existía). Pruebas: `test/diagnostico.test.mjs`.
+`POST /api/documents/generate` pasa por `requireDiagnostico` ([diagnosticoGate.js](maxi-docs-backend/src/middleware/diagnosticoGate.js)): antes de cotizar pregunta al formulario de diagnóstico (`verificar.php`, hospedado aparte) si la oportunidad (`monday_item_id`, tablero Oportunidades Maxirent, donde también vive el Diagnóstico) tiene en verde las secciones obligatorias: Reconfirmación, Operación, Retos y Decisión. El Meet es opcional (`'opcional' => true` en config-diagnostico.php) y no bloquea. Incompleto → 409 con `error` = mensaje para el vendedor; sin lead → 400; formulario caído → 503 (o pasa si `DIAGNOSTICO_FAIL_OPEN=true`). Sin `DIAGNOSTICO_URL` el candado está apagado. `GET /api/diagnostico/:itemId` lo usa `DocumentGeneratorModal` para deshabilitar "Abrir editor". `regenerate` no pasa por el candado (la cotización ya existía). Pruebas: `test/diagnostico.test.mjs`.
 
 ### Pricing table custom element
 
@@ -132,7 +132,7 @@ Optional features activate when their keys are present: email (Resend or SMTP), 
 
 ### Cotización desde Oportunidades Maxirent
 
-Se cotiza desde los elementos del tablero Oportunidades Maxirent (`8311006777`), no desde Leads. `POST /api/documents/generate` **actualiza** ese mismo elemento (`monday_item_id`) con `change_multiple_column_values` (`actualizarMondayDocItem`): nunca crea ni mueve elementos. Si el elemento no está en Oportunidades, no escribe nada. No pisa el ejecutivo, la razón social ni el correo si ya tienen valor. Al enviar a firma (`signatures.js`, `actualizarOportunidadEnMonday`) solo se actualiza el correo, o el elemento completo si al generar no se pudo. El candado del diagnóstico comercial se quitó: se cotiza sin restricciones. Pruebas: `test/oportunidad.test.mjs`.
+Se cotiza desde los elementos del tablero Oportunidades Maxirent (`8311006777`), no desde Leads. `POST /api/documents/generate` **actualiza** ese mismo elemento (`monday_item_id`) con `change_multiple_column_values` (`actualizarMondayDocItem`): nunca crea ni mueve elementos. Si el elemento no está en Oportunidades, no escribe nada. No pisa el ejecutivo, la razón social ni el correo si ya tienen valor. Al enviar a firma (`signatures.js`, `actualizarOportunidadEnMonday`) solo se actualiza el correo, o el elemento completo si al generar no se pudo. La cotización pasa por el candado del diagnóstico comercial (ver arriba). Pruebas: `test/oportunidad.test.mjs`.
 
 ### Varias propuestas por oportunidad y aprobación del cliente
 

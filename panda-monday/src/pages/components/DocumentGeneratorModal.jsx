@@ -41,7 +41,7 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
         .then(r => vivo && setDiag({
           cargando: false,
           listo:    !r.data.activo,
-          mensaje:  'Abre la cotización desde el lead en monday para poder validar su diagnóstico comercial.',
+          mensaje:  'Abre la cotización desde la oportunidad en monday para poder validar su diagnóstico comercial.',
         }))
         .catch(() => vivo && setDiag({ cargando: false, listo: true, mensaje: '' }))
       return () => { vivo = false }
@@ -51,7 +51,7 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
       .catch(e => vivo && setDiag({
         cargando: false,
         listo:    false,
-        mensaje:  e.response?.data?.mensaje || 'No se pudo validar el diagnóstico comercial del lead.',
+        mensaje:  e.response?.data?.mensaje || 'No se pudo validar el diagnóstico comercial de la oportunidad.',
       }))
     return () => { vivo = false }
   }, [itemId])
@@ -138,7 +138,7 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
               <IconAlert />
               <div>
                 <div>{diag.mensaje || 'Completa el diagnóstico comercial antes de cotizar.'}</div>
-                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>Complétalo en la pestaña Diagnóstico del lead y vuelve a abrir esta ventana.</div>
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>Complétalo en la pestaña Diagnóstico de la oportunidad y vuelve a abrir esta ventana. Agendar el Meet es opcional.</div>
               </div>
             </div>
           )}
@@ -220,7 +220,7 @@ export default function DocumentGeneratorModal({ itemId, boardId, onClose, onGen
             className="btn btn-primary"
             onClick={handleOpenEditor}
             disabled={!selectedTpl || opening || diag.cargando || !diag.listo}
-            title={!diag.cargando && !diag.listo ? 'Completa el diagnóstico comercial del lead para poder cotizar' : undefined}
+            title={!diag.cargando && !diag.listo ? 'Completa el diagnóstico comercial de la oportunidad para poder cotizar' : undefined}
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           >
             {opening

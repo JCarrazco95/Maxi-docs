@@ -23,7 +23,7 @@ router.get('/:itemId', async (req, res) => {
     res.status(503).json({
       activo: true,
       listo: false,
-      mensaje: 'No se pudo validar el diagnóstico comercial del lead. Intenta de nuevo en un momento.',
+      mensaje: 'No se pudo validar el diagnóstico comercial de la oportunidad. Intenta de nuevo en un momento.',
       faltantes: [],
       secciones: [],
     });
